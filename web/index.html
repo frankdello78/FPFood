@@ -251,7 +251,7 @@
 			} else {
 			  console.log('OCR: ristorante non mappato (solo Orto è supportato).');
 			}
-			iif (/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) {
+			if (/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) {
 			  $data.value = dateISO;
 			} else {
 			  console.log('OCR: data non valida, non aggiorno il campo.', dateISO);

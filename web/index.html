@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="it">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>FPFood</title>
+
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0066cc" />
+
+    <style>
+        body { 
+            font-family: system-ui, sans-serif; 
+            margin: 0; 
+            background: #f5f5f5;
+        }
+        header {
+            background: #0066cc;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            color: white;
+        }
+        header img {
+            height: 48px;
+            margin-right: 12px;
+        }
+        main {
+            padding: 16px;
+            max-width: 600px;
+            margin: auto;
+        }
+        label { margin-top: 12px; display: block; }
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            margin-top: 6px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            margin-top: 20px;
+        }
+        .list-item {
+            background: white;
+            padding: 12px;
+            margin-top: 10px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+        .actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .actions button {
+            flex: 1;
+            background: #444;
+        }
+        .actions .delete {
+            background: #aa0000;
+        }
+        .totale {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+<header>
+    <img src="icons/azienda.png" alt="logo" />
+    <h2>FPFood</h2>
+</header>
+
+<main>
+
+    <h3 id="utenteLabel"></h3>
+
+    <label>Ristorante</label>
+    <select id="rist">
+        <option value="">Seleziona</option>
+        <option>Orto dei longobardi</option>
+        <option>Sace Group</option>
+    </select>
+
+    <label>Data</label>
+    <input type="date" id="data" />
+
+    <label>Importo</label>
+    <input type="number" step="0.01" id="importo" />
+
+    <button id="salvaBtn">Salva</button>
+
+    <h3>📋 Pasti salvati</h3>
+    <div id="lista"></div>
+
+    <div class="totale" id="totaleBox">Totale: 0 €</div>
+
+</main>
+
+<script>
+const API = "http://localhost:8000/api";
+
+// ----------------------
+// UTENTE (solo prima volta)
+// ----------------------
+if (!localStorage.getItem("fpfood_user")) {
+    let nome = "";
+    while (!nome.trim()) {
+        nome = prompt("Inserisci Nome e Cognome:");
+    }
+    localStorage.setItem("fpfood_user", nome.trim());
+}
+
+const userFull = localStorage.getItem("fpfood_user");
+
+// Etichetta utente: M DAngelo
+function labelUser(full) {
+    const parts = full.split(" ");
+    if (parts.length < 2) return full;
+    const nome = parts[0];
+    const cognome = parts.slice(1).join("").replace(/['’]/g, "");
+    return nome[0].toUpperCase() + " " + cognome;
+}
+
+document.getElementById("utenteLabel").textContent = "Utente: " + labelUser(userFull);
+
+// ----------------------
+// Salva pasto
+// ----------------------
+document.getElementById("salvaBtn").onclick = async () => {
+    const r = document.getElementById("rist").value;
+    const d = document.getElementById("data").value;
+    const i = document.getElementById("importo").value;
+
+    if (!r || !d || !i) {
+        alert("Compila tutti i campi.");
+        return;
+    }
+
+    const payload = {
+        utente: userFull,
+        ristorante: r,
+        data: d,
+        importo: parseFloat(i)
+    };
+
+    await fetch(`${API}/pasti`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+    });
+
+    caricaLista();
+};
+
+// ----------------------
+// Carica lista pasti
+// ----------------------
+async function caricaLista() {
+    const listaBox = document.getElementById("lista");
+    listaBox.innerHTML = "";
+
+    const r = await fetch(`${API}/pasti/${encodeURIComponent(userFull)}`);
+    const dati = await r.json();
+
+    for (const p of dati) {
+        const div = document.createElement("div");
+        div.className = "list-item";
+
+        div.innerHTML = `
+            <div>
+                <b>${p.ristorante}</b><br>
+                ${p.data} — ${p.importo} €
+            </div>
+            <div class="actions">
+                <button onclick="modifica(${p.id}, '${p.ristorante}', '${p.data}', ${p.importo})">Modifica</button>
+                <button class="delete" onclick="elimina(${p.id})">Elimina</button>
+            </div>
+        `;
+
+        listaBox.appendChild(div);
+    }
+
+    aggiornaTotale();
+}
+
+// ----------------------
+// Elimina
+// ----------------------
+async function elimina(id) {
+    if (!confirm("Eliminare pasto?")) return;
+
+    await fetch(`${API}/pasti/${id}`, { method: "DELETE" });
+    caricaLista();
+}
+
+// ----------------------
+// Modifica
+// ----------------------
+async function modifica(id, rist, data, importo) {
+    const nr = prompt("Ristorante:", rist);
+    if (!nr) return;
+
+    const nd = prompt("Data (YYYY-MM-DD):", data);
+    if (!nd) return;
+
+    const ni = prompt("Importo:", importo);
+    if (!ni) return;
+
+    const payload = {
+        utente: userFull,
+        ristorante: nr,
+        data: nd,
+        importo: parseFloat(ni)
+    };
+
+    await fetch(`${API}/pasti/${id}`, {
+        method: "PUT",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+    });
+
+    caricaLista();
+}
+
+// ----------------------
+// Totale
+// ----------------------
+async function aggiornaTotale() {
+    const r = await fetch(`${API}/pasti/${encodeURIComponent(userFull)}/totale`);
+    const j = await r.json();
+    document.getElementById("totaleBox").textContent = "Totale: " + j.totale + " €";
+}
+
+caricaLista();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("service-worker.js");
+}
+</script>
+
+</body>
+</html>

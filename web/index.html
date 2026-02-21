@@ -129,10 +129,10 @@
 			break;
 		  }
 
-		  // data: dd/mm/yyyy | dd-mm-yyyy | yyyy-mm-dd
+		  // data: consenti spazi attorno ai separatori
 		  let dateISO = '';
-		  const re1 = /(\b)(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(\b)/;       // 31/01/2026
-		  const re2 = /(\b)(\d{4})-(\d{1,2})-(\d{1,2})(\b)/;                   // 2026-01-31
+		  const re1 = /(\b)(\d{1,2})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{2,4})(\b)/; // 31 / 01 / 2026
+		  const re2 = /(\b)(\d{4})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})(\b)/;            // 2026 - 01 - 31
 		  for (const l of lines) {
 			let m = l.match(re1);
 			if (m) { dateISO = toISO(m[2], m[3], m[4]); break; }
@@ -140,9 +140,9 @@
 			if (m) { dateISO = `${m[2]}-${m[3].padStart(2,'0')}-${m[4].padStart(2,'0')}`; break; }
 		  }
 
-		  // totale: prendo l’ULTIMO importo tipo 12,34 o 12.34
-		  const amounts = [...text.matchAll(/\d+[.,]\d{2}/g)].map(x => x[0]);
-		  const total = (amounts.length ? amounts[amounts.length - 1] : '').replace(',', '.');
+		  // totale: consenti spazio prima dei centesimi (es. “12, 50”)
+		  const amountMatches = [...text.matchAll(/\d+[.,]\s?\d{2}/g)].map(x => x[0].replace(/\s+/g,''));
+		  const total = (amountMatches.length ? amountMatches[amountMatches.length - 1] : '').replace(',', '.');
 
 		  return { merchant, dateISO, total };
 		}
@@ -161,7 +161,7 @@
 		}
 
 		async function doOCR(file) {
-		  const { data } = await Tesseract.recognize(file, 'ita', {
+		  const { data } = await Tesseract.recognize(file, 'ita+eng', {
 			logger: m => console.log(m.status || '', m.progress || '')
 		  });
 		  return data && data.text ? data.text : '';
@@ -208,7 +208,7 @@
 			}
 
 			setStatus('Avvio OCR (download motore)...');
-			const { data } = await Tesseract.recognize(file, 'ita', {
+			const { data } = await Tesseract.recognize(file, 'ita+eng', {
 			  logger: m => {
 				// m.status: 'loading tesseract core','initializing tesseract','loading language traineddata','recognizing text'
 				if (m?.status && m?.progress != null) {
@@ -233,7 +233,11 @@
 			if (total)   { $importo.value = parseFloat(total).toFixed(2); }
 
 			setStatus('Completato');
-			autoDownload(file, merchant || ristValue || 'scontrino');
+			if (dateISO || total) {
+			  autoDownload(file, merchant || ristValue || 'scontrino');
+			} else {
+			  console.log('OCR: nessuna data/importo trovati — non salvo la foto.');
+			}
 		  } catch (e) {
 			console.error('OCR error:', e);
 			setStatus('Errore OCR');

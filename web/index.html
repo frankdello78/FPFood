@@ -94,10 +94,11 @@
 	<label>Importo</label>
 	<div style="display:flex;gap:8px;align-items:center">
 	  <input type="number" step="0.01" id="importo" style="flex:1"/>
-	  <button id="scanBtn" title="Scansiona scontrino" style="width:44px;height:44px;padding:0;border-radius:8px;background:#eef;border:1px solid #99c;cursor:pointer">
-		<img src="icons/scan.png" alt="scan" style="width:24px;height:24px;vertical-align:middle;border:0;background:transparent"/>
-	  </button>
-	  <input id="scan-file" type="file" accept="image/*" capture="environment" style="display:none">
+      <button id="scanBtn" title="Scansiona scontrino" style="width:44px;height:44px;padding:0;border-radius:8px;background:#eef;border:1px solid #99c;cursor:pointer">
+       <img src="icons/scan.png" alt="scan" style="width:24px;height:24px;vertical-align:middle;border:0;background:transparent"/>
+      </button>
+      <input id="scan-file" type="file" accept="image/*" capture="environment" style="display:none">
+      <span id="scanStatus" style="font-size:12px;color:#555;margin-left:6px">Pronto</span>
 	</div>
 	<button id="salvaBtn">Salva</button>
 
@@ -191,29 +192,58 @@
 		$scanFile?.addEventListener('change', async () => {
 		  const file = $scanFile.files?.[0];
 		  if (!file) return;
+
+		  const $status = document.getElementById('scanStatus');
+		  const setStatus = (s) => { if ($status) $status.textContent = s; };
+
 		  try {
-			const text = await doOCR(file);
+			setStatus('Carico immagine...');
+			// INFO rapida sul file
+			console.log('SCAN file:', file?.type, Math.round((file?.size || 0)/1024), 'KB');
+
+			if (typeof Tesseract === 'undefined') {
+			  alert('Tesseract non caricato (rete/CDN o cache). Riprova dopo qualche secondo.');
+			  setStatus('CDN non pronto');
+			  return;
+			}
+
+			setStatus('Avvio OCR (download motore)...');
+			const { data } = await Tesseract.recognize(file, 'ita', {
+			  logger: m => {
+				// m.status: 'loading tesseract core','initializing tesseract','loading language traineddata','recognizing text'
+				if (m?.status && m?.progress != null) {
+				  const pct = Math.round(m.progress * 100);
+				  setStatus(`${m.status} ${pct}%`);
+				}
+			  }
+			});
+
+			const text = (data && data.text) ? data.text : '';
+			console.log('OCR text (first 120):', text.slice(0,120).replace(/\s+/g,' '));
+
 			const { merchant, dateISO, total } = parseQuick(text);
 
 			const ristValue = mapRistorante(text) || mapRistorante(merchant);
 			if (ristValue) {
 			  $rist.value = ristValue;
 			} else {
-			  // non è Orto: non auto‑seleziono nulla
 			  console.log('OCR: ristorante non mappato (solo Orto è supportato).');
 			}
-			if (dateISO)   { $data.value = dateISO; }
-			if (total)     { $importo.value = parseFloat(total).toFixed(2); }
+			if (dateISO) { $data.value = dateISO; }
+			if (total)   { $importo.value = parseFloat(total).toFixed(2); }
 
+			setStatus('Completato');
 			autoDownload(file, merchant || ristValue || 'scontrino');
 		  } catch (e) {
-			console.error(e);
+			console.error('OCR error:', e);
+			setStatus('Errore OCR');
 			alert('Errore durante la scansione: ' + (e && e.message ? e.message : 'vedi console'));
 		  } finally {
-			// reset per poter riselezionare la stessa foto
-			$scanFile.value = '';
+			$scanFile.value = ''; // per poter riselezionare lo stesso file
+			setTimeout(() => setStatus('Pronto'), 1200);
 		  }
 		});
+
 	  });
 	</script>
 
@@ -225,7 +255,7 @@
 </main>
 
 <script>
-const API = "http://localhost:8000/api";
+const API = "https://fpfood-backend.onrender.com/api";
 
 // ----------------------
 // UTENTE (solo prima volta)
@@ -255,29 +285,37 @@ document.getElementById("utenteLabel").textContent = "Utente: " + labelUser(user
 // Salva pasto
 // ----------------------
 document.getElementById("salvaBtn").onclick = async () => {
-    const r = document.getElementById("rist").value;
-    const d = document.getElementById("data").value;
-    const i = document.getElementById("importo").value;
+  const r = document.getElementById("rist").value;
+  const d = document.getElementById("data").value;
+  const i = document.getElementById("importo").value;
 
-    if (!r || !d || !i) {
-        alert("Compila tutti i campi.");
-        return;
-    }
+  if (!r || !d || !i) {
+    alert("Compila tutti i campi.");
+    return;
+  }
 
-    const payload = {
-        utente: userFull,
-        ristorante: r,
-        data: d,
-        importo: parseFloat(i)
-    };
+  const payload = {
+    utente: userFull,
+    ristorante: r,
+    data: d,
+    importo: parseFloat(i)
+  };
 
-    await fetch(`${API}/pasti`, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(payload)
+  try {
+    const res = await fetch(`${API}/pasti`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
     });
-
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      alert(`Errore salvataggio: ${res.status} ${res.statusText}\n${txt}`);
+      return;
+    }
     caricaLista();
+  } catch (e) {
+    alert("Errore di rete verso il backend:\n" + (e && e.message ? e.message : e));
+  }
 };
 
 // ----------------------
@@ -287,8 +325,13 @@ async function caricaLista() {
     const listaBox = document.getElementById("lista");
     listaBox.innerHTML = "";
 
-    const r = await fetch(`${API}/pasti/${encodeURIComponent(userFull)}`);
-    const dati = await r.json();
+	const r = await fetch(`${API}/pasti/${encodeURIComponent(userFull)}`);
+	if (!r.ok) {
+	  const txt = await r.text().catch(() => "");
+	  alert(`Errore caricamento lista: ${r.status} ${r.statusText}\n${txt}`);
+	  return;
+	}
+	const dati = await r.json();
 
     for (const p of dati) {
         const div = document.createElement("div");

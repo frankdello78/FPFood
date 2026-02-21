@@ -331,19 +331,36 @@ document.getElementById("salvaBtn").onclick = async () => {
     importo: parseFloat(i)
   };
 
+  // ---- LOG AVVIO ----
+  console.log("[POST] URL:", `${API}/pasti`);
+  console.log("[POST] Payload:", payload);
+
   try {
     const res = await fetch(`${API}/pasti`, {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      // mode: "cors", // opzionale; in genere non serve su Render
     });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
+
+    // ---- LOG RISPOSTA ----
+    console.log("[POST] Status:", res.status, res.statusText);
+
+    const txt = await res.text().catch(() => "");
+    // Se il backend restituisce JSON, proviamo a parse solo in caso 2xx
+    let json = null;
+    if (res.ok) {
+      try { json = txt ? JSON.parse(txt) : null; } catch { /* non JSON, ok */ }
+    } else {
+      console.log("[POST] Body (text):", txt);
       alert(`Errore salvataggio: ${res.status} ${res.statusText}\n${txt}`);
       return;
     }
+
+    console.log("[POST] OK, body:", json ?? txt);
     caricaLista();
   } catch (e) {
+    console.error("[POST] Network/CORS error:", e);
     alert("Errore di rete verso il backend:\n" + (e && e.message ? e.message : e));
   }
 };
@@ -352,17 +369,37 @@ document.getElementById("salvaBtn").onclick = async () => {
 // Carica lista pasti
 // ----------------------
 async function caricaLista() {
-    const listaBox = document.getElementById("lista");
-    listaBox.innerHTML = "";
+  const listaBox = document.getElementById("lista");
+  listaBox.innerHTML = "";
 
-	const r = await fetch(`${API}/pasti/${encodeURIComponent(userFull)}`);
-	if (!r.ok) {
-	  const txt = await r.text().catch(() => "");
-	  alert(`Errore caricamento lista: ${r.status} ${r.statusText}\n${txt}`);
-	  return;
-	}
-	const dati = await r.json();
+  const url = `${API}/pasti/${encodeURIComponent(userFull)}`;
+  console.log("[GET] URL:", url);
 
+  let r;
+  try {
+    r = await fetch(url);
+  } catch (e) {
+    console.error("[GET] Network/CORS error:", e);
+    alert("Errore rete nel caricamento lista:\n" + (e && e.message ? e.message : e));
+    return;
+  }
+
+  console.log("[GET] Status:", r.status, r.statusText);
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    console.log("[GET] Body (text):", txt);
+    alert(`Errore caricamento lista: ${r.status} ${r.statusText}\n${txt}`);
+    return;
+  }
+
+  let dati;
+  const txt = await r.text().catch(() => "");
+  try { dati = txt ? JSON.parse(txt) : []; }
+  catch (e) {
+    console.error("[GET] JSON parse error:", e, "Body:", txt);
+    alert("Errore parse dati lista (non JSON). Vedi console.");
+    return;
+  }
     for (const p of dati) {
         const div = document.createElement("div");
         div.className = "list-item";
@@ -437,7 +474,18 @@ caricaLista();
 
 <script>
 if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js");
+  // bump dell'URL per evitare cache del file SW
+  navigator.serviceWorker.register("service-worker.js?v=3").then(reg => {
+    reg.update?.(); // prova a prendere subito l'ultima versione
+  });
+
+  // quando subentra il nuovo SW ricarico 1 sola volta
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
 }
 </script>
 

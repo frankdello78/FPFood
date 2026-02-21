@@ -197,7 +197,11 @@
 			  return;
 			}
 			const text = await doOCR(file);
-			const { merchant, dateISO, total } = parseQuick(text);
+			if (typeof Tesseract === 'undefined') {
+			  alert('Tesseract non caricato (rete/CDN o cache). Riprova tra pochi secondi.');
+			  return;
+			}
+			const text = await doOCR(file);
 
 			const ristValue = mapRistorante(text) || mapRistorante(merchant);
 			if (ristValue) {

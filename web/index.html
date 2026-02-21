@@ -192,6 +192,10 @@
 		  const file = $scanFile.files?.[0];
 		  if (!file) return;
 		  try {
+			if (typeof Tesseract === 'undefined') {
+			  alert('Tesseract non caricato (rete/CDN). Riprova tra pochi secondi.');
+			  return;
+			}
 			const text = await doOCR(file);
 			const { merchant, dateISO, total } = parseQuick(text);
 

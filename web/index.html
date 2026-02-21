@@ -73,119 +73,6 @@
 
 <!-- Tesseract.js (CDN) -->
 https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js</script>
-<script>
-
-// === FPFOOD — Scan inline (OCR + auto-fill + download foto) ===
-window.addEventListener('load', () => {
-  const $scanBtn  = document.getElementById('scanBtn');
-  const $scanFile = document.getElementById('scan-file');
-  const $rist     = document.getElementById('rist');
-  const $data     = document.getElementById('data');
-  const $importo  = document.getElementById('importo');
-
-  function toISO(gg, mm, aa) {
-    if (!gg || !mm || !aa) return '';
-    if (aa.length === 2) aa = '20' + aa;
-    const pad = s => s.toString().padStart(2, '0');
-    return `${aa}-${pad(mm)}-${pad(gg)}`;
-  }
-
-  function parseQuick(text) {
-    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-
-    // fornitore: prima riga non “scontrino”
-    let merchant = '';
-    for (const l of lines) {
-      const u = l.toUpperCase();
-      if (u.includes('SCONTRINO')) continue;
-      merchant = l; break;
-    }
-
-    // data: dd/mm/yyyy | dd-mm-yyyy | yyyy-mm-dd
-    let dateISO = '';
-    for (const l of lines) {
-      let m = l.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
-      if (m) { dateISO = toISO(m[1], m[2], m[3]); break; }
-      m = l.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
-      if (m) { dateISO = `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`; break; }
-    }
-
-    // totale: prendo l’ULTIMO importo tipo 12,34 o 12.34
-    const amounts = [...text.matchAll(/\d+[.,]\d{2}/g)].map(x => x[0]);
-    const total = (amounts.length ? amounts[amounts.length - 1] : '').replace(',', '.');
-
-    return { merchant, dateISO, total };
-  }
-
-	function mapRistorante(text) {
-	  const u = (text || '').toUpperCase();
-	  if (u.includes('ORTO') || u.includes('LONGOBARDI')) return 'Orto dei longobardi';
-	  return ''; // altri ristoranti: niente auto‑selezione
-	}
-
-  function sanitizeName(s) {
-    return (s || 'scontrino')
-      .normalize('NFKD').replace(/[^\w\s-]/g,'')
-      .trim().replace(/\s+/g,'_').toLowerCase();
-  }
-
-  async function doOCR(file) {
-    const { data } = await Tesseract.recognize(file, 'ita', {
-      logger: m => console.log(m.status || '', m.progress || '')
-    });
-    return data && data.text ? data.text : '';
-  }
-
-  function autoDownload(file, merchant) {
-    const ts = new Date();
-    const y  = ts.getFullYear();
-    const mo = String(ts.getMonth()+1).padStart(2,'0');
-    const d  = String(ts.getDate()).padStart(2,'0');
-    const h  = String(ts.getHours()).padStart(2,'0');
-    const mi = String(ts.getMinutes()).padStart(2,'0');
-    const s  = String(ts.getSeconds()).padStart(2,'0');
-    const name = `scan_${sanitizeName(merchant)}_${y}${mo}${d}_${h}${mi}${s}.jpg`;
-
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name; // download locale (static site)
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  $scanBtn?.addEventListener('click', () => $scanFile?.click());
-
-  $scanFile?.addEventListener('change', async () => {
-    const file = $scanFile.files?.[0];
-    if (!file) return;
-    try {
-      const text = await doOCR(file);
-      const { merchant, dateISO, total } = parseQuick(text);
-
-	  const ristValue = mapRistorante(text) || mapRistorante(merchant);
-	  if (ristValue) {
-	     $rist.value = ristValue;
-	  } else {
-	    // non è Orto: non auto‑seleziono nulla
-	    console.log('OCR: ristorante non mappato (solo Orto è supportato).');
-	  }
-      if (dateISO)   { $data.value = dateISO; }
-      if (total)     { $importo.value = parseFloat(total).toFixed(2); }
-
-      autoDownload(file, merchant || ristValue || 'scontrino');
-    } catch (e) {
-      console.error(e);
-      alert('Errore durante la scansione.');
-    } finally {
-      // reset per poter riselezionare la stessa foto
-      $scanFile.value = '';
-    }
-  });
-});
-</script>
 
 </body>
 <header>
@@ -211,7 +98,7 @@ window.addEventListener('load', () => {
 	<div style="display:flex;gap:8px;align-items:center">
 	  <input type="number" step="0.01" id="importo" style="flex:1"/>
 	  <button id="scanBtn" title="Scansiona scontrino" style="width:44px;height:44px;padding:0;border-radius:8px;background:#eef;border:1px solid #99c;cursor:pointer">
-		<img src="web/icons/scan.png" alt="scan" style="width:24px;height:24px;vertical-align:middle;border:0;background:transparent"/>
+		<img src="icons/scan.png" alt="scan" style="width:24px;height:24px;vertical-align:middle;border:0;background:transparent"/>
 	  </button>
 	  <input id="scan-file" type="file" accept="image/*" capture="environment" style="display:none">
 	</div>

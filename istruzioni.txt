@@ -1,165 +1,117 @@
-backend FastAPI
-frontend PWA
-MySQL sarà solo una sostituzione del livello DB
-e l’app sarà installabile ovunque, non solo in LAN
+FPFOOD_210226_1705
 
-🎯 ROADMAP COMPLETA (senza eseguire nulla ora)
-✅ STEP 1 — Rendere la PWA realmente installabile su smartphone
-(da qualsiasi rete esterna, anche fuori casa/lavoro)
-Per questo servono 2 cose:
+1) Due parole su GitHub e Render
+
+GitHub = il repository del codice. È solo “il posto dove vive il codice” e da cui Render prende i file ad ogni push.
+Render = la piattaforma che esegue il tuo backend (e serve il tuo frontend statico). A ogni git push su main, Render ricostruisce e (se tutto ok) redeploya i servizi.
 
 
-Frontend pubblicato su un hosting HTTPS
-
-può essere:
-
-un tuo dominio
-PythonAnywhere
-Render
-Netlify (solo frontend)
-un server Windows interno con IIS + reverse-proxy
+In breve: scrivi/modifichi → git push su GitHub → Render prende il codice e aggiorna backend/frontend online.
 
 
-anche gratuito (ti consiglio Render o PythonAnywhere)
+2) Dove finiscono i dati oggi? (SQLite vs MySQL)
+
+In locale (sul tuo PC), quando avvii il backend, i dati vanno in D:\Python\FP_Other\FPFood\data\fpfood.db (SQLite locale).
+Su Render, i dati vanno nel file SQLite sul server Render, nel percorso data/fpfood.db del container.
+
+Non si aggiorna GitHub con i dati. GitHub non è un DB.
+Il file su Render non è lo stesso della tua macchina: sono due ambienti diversi, ognuno con il suo fpfood.db.
+Piano Free: i container possono “addormentarsi”, ma i file della Build restano; i file scritti in runtime su filesystem possono essere effimeri (non garantiti nel lungo periodo). Per questo, in produzione si usa MySQL o Postgres gestito. (Tranquillo: ora testiamo; la migrazione a MySQL è nel piano sotto.)
 
 
 
-Backend FastAPI pubblicato
 
-stesso hosting del frontend oppure separato
-serve solo che sia raggiungibile via HTTPS
-deploiamo lo stesso codice che hai già
+3) Mini‑roadmap interventi sull’app (ordine consigliato)
+Fase A – UX/Feature PWA
 
+Scanner scontrino (OCR)
 
-
-Quando sarà online, Chrome mostrerà subito:
-👉 “Aggiungi alla schermata Home”
-e diventa una vera app.
-
-✅ STEP 2 — Collegare la PWA al tuo software interno (MySQL)
-Lo faremo così:
+Aggiungiamo bottone “📸 Scansiona scontrino” in index.html.
+Integro Tesseract.js (CDN) e parsing: riconosco Orto/Sace, data, importo; auto‑compilo i campi.
+(F&R unico in index.html — te lo passo quando mi dici “SÌ OCR”.)
 
 
-Il backend FastAPI smette di usare SQLite e usa MySQL.
-Zero modifiche al frontend.
+Riepilogo nella UI
+
+Somma totale (già c’è), in più filtro per mese e ristorante e mini tabellina “ultimi N pasti”.
 
 
-Il tuo software interno (quello Windows) potrà:
+Icona installata / Logo
 
-interrogare le API REST FPFood da PC interno
-leggere i pasti (GET)
-inserirli nel tuo DB MySQL aziendale
-generare statistiche o report
+Aggiorniamo manifest.webmanifest con icons/icon-192.png e icons/icon-512.png (maskable consigliato).
+Cambiamo l’icona header se vuoi (hai già icons/azienda.png).
 
 
+Piccole rifiniture mobile
 
-FastAPI diventa un vero microservizio:
-
-la PWA scrive i dati su FPFood Backend
-il tuo software aziendale legge gli stessi dati e li integra
+controlli più grandi, validazione importo, messaggi di successo/errore più chiari.
 
 
 
-NESSUNA duplicazione.
-Solo un flusso dati pulito:
-📱 PWA → FastAPI → MySQL → tuo software interno
+Fase B – Identità e sicurezza
+5) Login “soft” (email+password)
 
-✅ STEP 3 — Deploy finale (installabile ovunque)
-Ti chiederò quando siamo pronti:
+Aggiungo 2 endpoint su FastAPI: /api/auth/register, /api/auth/login (JWT semplice).
+Nel frontend: form login → salva token in localStorage; le chiamate fetch aggiungono Authorization: Bearer <token>.
+Dopo login mostriamo la pagina principale; l’utente inserisce Nome+Cognome una sola volta (li teniamo come profilo lato backend e in localStorage per etichetta breve “F Cognome”).
 
-Dove vuoi pubblicare il backend?
-Dove vuoi pubblicare il frontend?
-Hai un dominio?
-Vuoi HTTPS automatico (Let’s Encrypt)?
+Fase C – Dati aziendali
+6) Migrazione a MySQL (server principale)
 
-E poi ti preparo tutto chiavi in mano.
+Switchiamo il backend da SQLite a MySQL (connector pymysql o mysql-connector-python).
+Varianti:
 
-✅ SÌ, useremo interrogazioni API (REST) dal software aziendale.
-E ti spiego perché è la soluzione migliore e più semplice, senza alternative inutili.
-
-🟦 1) Lato software aziendale → ci colleghiamo via HTTP alle API
-Il tuo software interno (Windows, Python, C#, VB, quello che vuoi) farà:
-GET https://tuo-backend/api/pasti/{utente}
-
-e riceverà:
-JSON[  {    "id": 12,    "utente": "Francesco Dell'Oste",    "ristorante": "Orto dei longobardi",    "data": "2026-02-17",    "importo": 7.50  },  ...]``Mostra più linee
-Fine.
-Niente complicazioni.
-È la lettura che chiedi tu.
-
-🟦 2) NON serve nessun REST “avanzato”
-Tu hai bisogno solo di:
+Switch diretto: cambi il layer DB e da domani tutti i nuovi pasti finiscono su MySQL.
+Migrazione one‑shot: script che legge data/fpfood.db (SQLite) e inserisce in MySQL, poi si fa lo switch.
 
 
-1 endpoint per ogni utente:
-GET /api/pasti/{utente}
 
 
-1 endpoint totale:
-GET /api/pasti/{utente}/totale
+Integrazione con il tuo software interno
+
+Dal tuo gestionale: solo GET REST (/api/pasti/{utente}, /api/pasti/{utente}/totale) e importi in MySQL/DB principale secondo le tue regole.
+Se vorrai, creo endpoint “report per periodo” (/api/pasti?from=...&to=...).
 
 
-Basta.
-Non serve POST, PUT, DELETE lato azienda.
-(Quelli servono solo alla PWA.)
 
-🟦 3) Perché non leggere direttamente SQLite o MySQL del backend?
-Ti spiego subito, così eliminiamo tutti i dubbi:
-❌  Non si legge SQLite del backend
-Perché è locale nel server (o Render) e non è pensato per accesso remoto.
-❌  Non si legge MySQL “cloud” direttamente dalla tua azienda
-Per motivi di sicurezza e firewall.
-✔️  L’unico modo sano e approvabile da IT
-è interrogare API HTTPS.
-È lo standard ovunque.
 
-🟦 4) Il tuo software aziendale come farà davvero?
-Se è in Python:
-Pythonimport requestsr = requests.get("https://backend/api/pasti/Francesco%20DellOste")dati = r.json()Mostra più linee
-Se è in C#:
-C#var json = await http.GetStringAsync("https://backend/api/pasti/Francesco%20DellOste");var lista = JsonSerializer.Deserialize<List<Pasto>>(json);Mostra più linee
-Se è in SQL Server o MySQL interno e vuoi fare import automatico:
+4) Risposte puntuali alle tue domande
 
-Il tuo software legge i dati via API
-Poi fa INSERT nel tuo DB interno
+“Dopo il salvataggio, i dati vanno su fpfood.db (SQLite)? Lo vedo su GitHub?”
 
-È il flusso giusto.
+Sì, oggi i salvataggi vanno su SQLite: in locale nel tuo D:\..., su Render nel filesystem del servizio backend.
+No, GitHub non si aggiorna con i dati. GitHub contiene solo codice, non è un DB.
 
-🟦 5) Quindi la pipeline finale sarà:
-📱 PWA (smartphone)
-↓
-POST API
-↓
-🟦 FastAPI Backend (Render o aziendale)
-↓
-GET API
-↓
-🖥️ Il tuo software Windows
-↓
-INSERT → DB MySQL aziendale
-Questo è il modello standard enterprise.
-Nulla di più perfetto.
 
-🟩 6) Rassicurazione chiave
-Tu stai pensando:
+“Lo vedo anche in locale (D:)?”
 
-“Mi serve REST veramente? Mi serve fare API?”
+Solo quando usi il backend locale: allora aggiorni il tuo data/fpfood.db locale.
+Quando usi la PWA online che punta a Render, aggiorni il db su Render, non quello locale.
 
-La risposta secca è:
-✔️ SÌ, ma ti bastano SOLO 2 API in lettura
-✔️ le hai già pronte
-✔️ e il tuo software aziendale può leggerle senza problemi
-Non c’è un approccio più semplice, né uno più compatibile con il tuo scenario.
 
-🟧 7) Conclusione
-Quando pubblichiamo il backend su Render, tu potrai già:
-GET https://fpfood-backend.onrender.com/api/pasti/Francesco%20DellOste
+“Tool che migra da SQLite a MySQL?”
 
-e il tuo software aziendale potrà leggerlo senza difficoltà.
-Se Render è bloccato → ti preparo la richiesta per IT di cui ti avevo parlato.
+Semplice script Python: legge da SQLite (sqlite3), inserisce su MySQL (pymysql/mysql-connector-python).
+In alternativa, direttamente da MySQL con LOAD DATA (se esportiamo CSV) o con SQLAlchemy per una migrazione più “tipata”.
+Te lo preparo con F&R quando dici “OK Migrazione”.
 
-👉 Se vuoi, procediamo con il deploy del backend su Render
-È il passo successivo.
-Scrivimi:
-“OK Deploy Backend Render”
-e ti passo solo i blocchi da incollare e i click da fare.
+
+
+
+5) Proposte operative immediate (passi piccoli)
+Dimmi in che ordine preferisci:
+A) OCR scontrino (ti do 1 solo blocco F&R per index.html: bottone + Tesseract + parsing + autocompilazione)
+B) Riepiloghi UI (filtro per mese/ristorante + lista ultimi N)
+C) Icone PWA (aggiunta 192/512 maskable + manifest)
+D) Login email+password (FastAPI + JWT + UI login/logout)
+E) Migrazione a MySQL (switch backend + opzionale import storico da SQLite)
+
+Come da tue regole: facciamo un punto alla volta. Appena mi dai “OK TEST” sul punto A (ad esempio OCR), passo al successivo.
+
+
+Mini‑FAQ velocissima
+
+Serve ricompilare quando cambio frontend?
+Su Render Static Site: ogni git push → redeploy automatico. Se cambi service-worker.js / manifest, fai hard refresh o “Clear site data” per vedere subito gli aggiornamenti.
+Il piano Free di Render “dorme”?
+Sì, può addormentarsi: il primo hit dopo un po’ è più lento. In produzione reale conviene un piano non‑sleep o un DB esterno (MySQL) e un ping periodico.

@@ -112,9 +112,21 @@
 		const $importo  = document.getElementById('importo');
 
 		function toISO(gg, mm, aa) {
-		  if (aa.length === 2) { aa = '20' + aa; }
-		  const pad = s => s.toString().padStart(2, '0');
-		  return `${aa}-${pad(mm)}-${pad(gg)}`;
+		  // normalizza a numeri
+		  let d = parseInt(String(gg).replace(/\D/g, ''), 10);
+		  let m = parseInt(String(mm).replace(/\D/g, ''), 10);
+		  let y = parseInt(String(aa).replace(/\D/g, ''), 10);
+
+		  // anno a 2 cifre -> 20xx
+		  if (y < 100) y += 2000;
+
+		  // controlli base
+		  if (!(y >= 2000 && y <= 2100)) return '';
+		  if (!(m >= 1 && m <= 12)) return '';
+		  if (!(d >= 1 && d <= 31)) return '';
+
+		  const pad = (n) => String(n).padStart(2, '0');
+		  return `${y}-${pad(m)}-${pad(d)}`;
 		}
 
 		function parseQuick(text) {
@@ -129,18 +141,28 @@
 			break;
 		  }
 
-		  // data: consenti spazi attorno ai separatori
+		  // data: supporta "DATA" / "DATA ORA", separatori / - . e spazi
 		  let dateISO = '';
-		  const re1 = /(\b)(\d{1,2})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{2,4})(\b)/; // 31 / 01 / 2026
-		  const re2 = /(\b)(\d{4})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})(\b)/;            // 2026 - 01 - 31
+
+		  // "DATA ORA: 22/02/26 19:03" o "DATA: 22.02.2026"
+		  const reDataPref = /DATA(?:\s*ORA)?\s*[:\-]?\s*(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{2,4})/i;
+		  // 22/02/2026 | 22-02-26 | 22.02.26 (anche con spazi)
+		  const reDMY     = /(\b)(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{2,4})(\b)/;
+		  // 2026-02-22 (anche con spazi)
+		  const reYMD     = /(\b)(\d{4})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})(\b)/;
+
 		  for (const l of lines) {
-			let m = l.match(re1);
+			let m = l.match(reDataPref);
+			if (m) { dateISO = toISO(m[1], m[2], m[3]); break; }
+
+			m = l.match(reDMY);
 			if (m) { dateISO = toISO(m[2], m[3], m[4]); break; }
-			m = l.match(re2);
-			if (m) { dateISO = `${m[2]}-${m[3].padStart(2,'0')}-${m[4].padStart(2,'0')}`; break; }
+
+			m = l.match(reYMD);
+			if (m) { dateISO = toISO(m[4], m[3], m[2]); break; } // y-m-d -> (d,m,y)
 		  }
 
-		  // totale: consenti spazio prima dei centesimi (es. “12, 50”)
+		  // totale: ultimo importo (12,34 | 12.34 | 12, 34)
 		  const amountMatches = [...text.matchAll(/\d+[.,]\s?\d{2}/g)].map(x => x[0].replace(/\s+/g,''));
 		  const total = (amountMatches.length ? amountMatches[amountMatches.length - 1] : '').replace(',', '.');
 
@@ -229,7 +251,11 @@
 			} else {
 			  console.log('OCR: ristorante non mappato (solo Orto è supportato).');
 			}
-			if (dateISO) { $data.value = dateISO; }
+			iif (/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) {
+			  $data.value = dateISO;
+			} else {
+			  console.log('OCR: data non valida, non aggiorno il campo.', dateISO);
+			}
 			if (total)   { $importo.value = parseFloat(total).toFixed(2); }
 
 			setStatus('Completato');

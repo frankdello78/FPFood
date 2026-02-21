@@ -4,7 +4,7 @@ AVVIARE DUE TERMINALE I DIFFERENTI DA POWERSHEL
 🔷 STEP A — Attiva la venv PER IL BACKEND
 
 
-D:\Python\FP_Other\FPFood
+cd D:\Python\FP_Other\FPFood
 
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
@@ -29,3 +29,16 @@ http://localhost:5000/index.html
 
 select codice,Descriz,SourceCode,QtaPrelDaMagaz,ModoPrelDaMagaz from inventariovoci where IdInv = 34 and qtaunit <> QtaPrelDaMagaz and qtapreldamagaz <>-1
 
+
+
+
+online 
+
+per aggiornare GitHub e rendere fai
+
+cd D:\Python\FP_Other\FPFood
+
+git add .
+git commit -m "update"
+git push
+ 

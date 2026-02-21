@@ -71,123 +71,120 @@
     </style>
 </head>
 
-<!-- FPFOOD — OCR Scontrino (Punto 1) -->
-<section id="fpfood-ocr" style="padding:12px;border-top:1px solid #ddd;margin-top:16px;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif">
-  <h3 style="margin:0 0 8px 0;font-size:16px;">OCR Scontrino</h3>
-
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-    <input id="fpfood-ocr-file" type="file" accept="image/*" capture="environment" style="max-width:260px">
-    <button id="fpfood-ocr-run" style="padding:8px 12px;border-radius:6px;border:1px solid #999;background:#f5f5f5;cursor:pointer">
-      Esegui OCR
-    </button>
-    <span id="fpfood-ocr-progress" style="font-size:12px;color:#555">Pronto</span>
-  </div>
-
-  <div style="display:flex;gap:12px;flex-wrap:wrap">
-    <div style="flex:1;min-width:260px">
-      <label for="fpfood-ocr-raw" style="font-size:12px;color:#333">Testo riconosciuto</label>
-      <textarea id="fpfood-ocr-raw" rows="8" style="width:100%;box-sizing:border-box"></textarea>
-    </div>
-    <div style="flex:1;min-width:220px">
-      <label style="font-size:12px;color:#333;display:block">Parsing rapido</label>
-      <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:center">
-        <span style="font-size:12px;color:#666">Esercente</span><input id="fpfood-ocr-merchant" />
-        <span style="font-size:12px;color:#666">Data</span><input id="fpfood-ocr-date" />
-        <span style="font-size:12px;color:#666">Totale</span><input id="fpfood-ocr-total" />
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- Tesseract.js (CDN) -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js" defer></script>
-
+https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js</script>
 <script>
-  (function () {
-    const $file = document.getElementById('fpfood-ocr-file');
-    const $btn  = document.getElementById('fpfood-ocr-run');
-    const $raw  = document.getElementById('fpfood-ocr-raw');
-    const $prg  = document.getElementById('fpfood-ocr-progress');
-    const $merchant = document.getElementById('fpfood-ocr-merchant');
-    const $date = document.getElementById('fpfood-ocr-date');
-    const $total = document.getElementById('fpfood-ocr-total');
 
-    async function runOCR(file) {
-      $prg.textContent = 'Caricamento...';
-      const worker = await Tesseract.createWorker('ita', 1, {
-        logger: m => {
-          if (m.status && m.progress != null) {
-            const pct = Math.round(m.progress * 100);
-            $prg.textContent = m.status + ' ' + pct + '%';
-          }
-        }
-      });
-      try {
-        const { data } = await worker.recognize(file);
-        return (data && data.text) ? data.text : '';
-      } finally {
-        await worker.terminate();
-        $prg.textContent = 'Pronto';
-      }
+// === FPFOOD — Scan inline (OCR + auto-fill + download foto) ===
+window.addEventListener('load', () => {
+  const $scanBtn  = document.getElementById('scanBtn');
+  const $scanFile = document.getElementById('scan-file');
+  const $rist     = document.getElementById('rist');
+  const $data     = document.getElementById('data');
+  const $importo  = document.getElementById('importo');
+
+  function toISO(gg, mm, aa) {
+    if (!gg || !mm || !aa) return '';
+    if (aa.length === 2) aa = '20' + aa;
+    const pad = s => s.toString().padStart(2, '0');
+    return `${aa}-${pad(mm)}-${pad(gg)}`;
+  }
+
+  function parseQuick(text) {
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+    // fornitore: prima riga non “scontrino”
+    let merchant = '';
+    for (const l of lines) {
+      const u = l.toUpperCase();
+      if (u.includes('SCONTRINO')) continue;
+      merchant = l; break;
     }
 
-    function parseQuick(text) {
-      // parsing semplice e robusto, senza regex complesse
-      const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-
-      // Esercente: prima riga non vuota e non “scontrino fiscale”
-      let merchant = '';
-      for (const l of lines) {
-        const u = l.toUpperCase();
-        if (u.includes('SCONTRINO')) continue;
-        merchant = l;
-        break;
-      }
-
-      // Data: cerca formato dd/mm/yyyy o dd-mm-yyyy
-      let date = '';
-      for (const l of lines) {
-        const m = l.match(/(\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b)/);
-        if (m) { date = m[1]; break; }
-      }
-
-      // Totale: riga con “TOTALE” o “EUR” o importi con virgola
-      let total = '';
-      const candidate = lines.find(l =>
-        l.toUpperCase().includes('TOTALE') ||
-        l.toUpperCase().includes('EUR') ||
-        l.match(/\d+[\.,]\d{2}/)
-      );
-      if (candidate) {
-        const m = candidate.match(/(\d+[.,]\d{2})/);
-        if (m) total = m[1].replace(',', '.');
-      }
-
-      return { merchant, date, total };
+    // data: dd/mm/yyyy | dd-mm-yyyy | yyyy-mm-dd
+    let dateISO = '';
+    for (const l of lines) {
+      let m = l.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
+      if (m) { dateISO = toISO(m[1], m[2], m[3]); break; }
+      m = l.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+      if (m) { dateISO = `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`; break; }
     }
 
-    $btn?.addEventListener('click', async () => {
-      const file = $file?.files?.[0];
-      if (!file) {
-        $prg.textContent = 'Seleziona una foto dello scontrino';
-        return;
-      }
-      $btn.disabled = true;
-      try {
-        const text = await runOCR(file);
-        $raw.value = text || '';
-        const { merchant, date, total } = parseQuick(text || '');
-        $merchant.value = merchant || '';
-        $date.value = date || '';
-        $total.value = total || '';
-      } catch (err) {
-        console.error(err);
-        $prg.textContent = 'Errore OCR';
-      } finally {
-        $btn.disabled = false;
-      }
+    // totale: prendo l’ULTIMO importo tipo 12,34 o 12.34
+    const amounts = [...text.matchAll(/\d+[.,]\d{2}/g)].map(x => x[0]);
+    const total = (amounts.length ? amounts[amounts.length - 1] : '').replace(',', '.');
+
+    return { merchant, dateISO, total };
+  }
+
+	function mapRistorante(text) {
+	  const u = (text || '').toUpperCase();
+	  if (u.includes('ORTO') || u.includes('LONGOBARDI')) return 'Orto dei longobardi';
+	  return ''; // altri ristoranti: niente auto‑selezione
+	}
+
+  function sanitizeName(s) {
+    return (s || 'scontrino')
+      .normalize('NFKD').replace(/[^\w\s-]/g,'')
+      .trim().replace(/\s+/g,'_').toLowerCase();
+  }
+
+  async function doOCR(file) {
+    const { data } = await Tesseract.recognize(file, 'ita', {
+      logger: m => console.log(m.status || '', m.progress || '')
     });
-  })();
+    return data && data.text ? data.text : '';
+  }
+
+  function autoDownload(file, merchant) {
+    const ts = new Date();
+    const y  = ts.getFullYear();
+    const mo = String(ts.getMonth()+1).padStart(2,'0');
+    const d  = String(ts.getDate()).padStart(2,'0');
+    const h  = String(ts.getHours()).padStart(2,'0');
+    const mi = String(ts.getMinutes()).padStart(2,'0');
+    const s  = String(ts.getSeconds()).padStart(2,'0');
+    const name = `scan_${sanitizeName(merchant)}_${y}${mo}${d}_${h}${mi}${s}.jpg`;
+
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name; // download locale (static site)
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  $scanBtn?.addEventListener('click', () => $scanFile?.click());
+
+  $scanFile?.addEventListener('change', async () => {
+    const file = $scanFile.files?.[0];
+    if (!file) return;
+    try {
+      const text = await doOCR(file);
+      const { merchant, dateISO, total } = parseQuick(text);
+
+	  const ristValue = mapRistorante(text) || mapRistorante(merchant);
+	  if (ristValue) {
+	     $rist.value = ristValue;
+	  } else {
+	    // non è Orto: non auto‑seleziono nulla
+	    console.log('OCR: ristorante non mappato (solo Orto è supportato).');
+	  }
+      if (dateISO)   { $data.value = dateISO; }
+      if (total)     { $importo.value = parseFloat(total).toFixed(2); }
+
+      autoDownload(file, merchant || ristValue || 'scontrino');
+    } catch (e) {
+      console.error(e);
+      alert('Errore durante la scansione.');
+    } finally {
+      // reset per poter riselezionare la stessa foto
+      $scanFile.value = '';
+    }
+  });
+});
 </script>
 
 </body>
@@ -213,10 +210,128 @@
 	<label>Importo</label>
 	<div style="display:flex;gap:8px;align-items:center">
 	  <input type="number" step="0.01" id="importo" style="flex:1"/>
-	  <img id="scanBtn" src="icons/scan.png" alt="Scansione scontrino" title="Scansiona scontrino"
-		   style="width:28px;height:28px;cursor:pointer;border-radius:6px;border:1px solid #ccc;padding:4px;background:#fff"/>
+	  <button id="scanBtn" title="Scansiona scontrino" style="width:44px;height:44px;padding:0;border-radius:8px;background:#eef;border:1px solid #99c;cursor:pointer">
+		<img src="web/icons/scan.png" alt="scan" style="width:24px;height:24px;vertical-align:middle;border:0;background:transparent"/>
+	  </button>
+	  <input id="scan-file" type="file" accept="image/*" capture="environment" style="display:none">
 	</div>
 	<button id="salvaBtn">Salva</button>
+
+	<script>
+	  // === FPFOOD — Scan inline (OCR + auto-fill + download foto) ===
+	  window.addEventListener('load', () => {
+		const $scanBtn  = document.getElementById('scanBtn');
+		const $scanFile = document.getElementById('scan-file');
+		const $rist     = document.getElementById('rist');
+		const $data     = document.getElementById('data');
+		const $importo  = document.getElementById('importo');
+
+		function toISO(gg, mm, aa) {
+		  if (aa.length === 2) { aa = '20' + aa; }
+		  const pad = s => s.toString().padStart(2, '0');
+		  return `${aa}-${pad(mm)}-${pad(gg)}`;
+		}
+
+		function parseQuick(text) {
+		  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+		  // fornitore: prima riga non “scontrino”
+		  let merchant = '';
+		  for (const l of lines) {
+			const u = l.toUpperCase();
+			if (u.includes('SCONTRINO')) continue;
+			merchant = l;
+			break;
+		  }
+
+		  // data: dd/mm/yyyy | dd-mm-yyyy | yyyy-mm-dd
+		  let dateISO = '';
+		  const re1 = /(\b)(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(\b)/;       // 31/01/2026
+		  const re2 = /(\b)(\d{4})-(\d{1,2})-(\d{1,2})(\b)/;                   // 2026-01-31
+		  for (const l of lines) {
+			let m = l.match(re1);
+			if (m) { dateISO = toISO(m[2], m[3], m[4]); break; }
+			m = l.match(re2);
+			if (m) { dateISO = `${m[2]}-${m[3].padStart(2,'0')}-${m[4].padStart(2,'0')}`; break; }
+		  }
+
+		  // totale: prendo l’ULTIMO importo tipo 12,34 o 12.34
+		  const amounts = [...text.matchAll(/\d+[.,]\d{2}/g)].map(x => x[0]);
+		  const total = (amounts.length ? amounts[amounts.length - 1] : '').replace(',', '.');
+
+		  return { merchant, dateISO, total };
+		}
+
+		function mapRistorante(text) {
+		  const u = text.toUpperCase();
+		  if (u.includes('SACE')) return 'Sace Group';
+		  if (u.includes('ORTO') || u.includes('LONGOBARDI')) return 'Orto dei longobardi';
+		  return '';
+		}
+
+		function sanitizeName(s) {
+		  return (s || 'scontrino')
+				 .normalize('NFKD').replace(/[^\w\s-]/g,'')
+				 .trim().replace(/\s+/g,'_').toLowerCase();
+		}
+
+		async function doOCR(file) {
+		  const { data } = await Tesseract.recognize(file, 'ita', {
+			logger: m => console.log(m.status || '', m.progress || '')
+		  });
+		  return data && data.text ? data.text : '';
+		}
+
+		function autoDownload(file, merchant) {
+		  const ts = new Date();
+		  const y  = ts.getFullYear();
+		  const mo = String(ts.getMonth()+1).padStart(2,'0');
+		  const d  = String(ts.getDate()).padStart(2,'0');
+		  const h  = String(ts.getHours()).padStart(2,'0');
+		  const mi = String(ts.getMinutes()).padStart(2,'0');
+		  const s  = String(ts.getSeconds()).padStart(2,'0');
+		  const name = `scan_${sanitizeName(merchant)}_${y}${mo}${d}_${h}${mi}${s}.jpg`;
+
+		  const url = URL.createObjectURL(file);
+		  const a = document.createElement('a');
+		  a.href = url;
+		  a.download = name; // download locale (non su server)
+		  document.body.appendChild(a);
+		  a.click();
+		  a.remove();
+		  URL.revokeObjectURL(url);
+		}
+
+		$scanBtn?.addEventListener('click', () => $scanFile?.click());
+
+		$scanFile?.addEventListener('change', async () => {
+		  const file = $scanFile.files?.[0];
+		  if (!file) return;
+		  try {
+			const text = await doOCR(file);
+			const { merchant, dateISO, total } = parseQuick(text);
+
+			const ristValue = mapRistorante(text) || mapRistorante(merchant);
+			if (ristValue) {
+			  $rist.value = ristValue;
+			} else {
+			  // non è Orto: non auto‑seleziono nulla
+			  console.log('OCR: ristorante non mappato (solo Orto è supportato).');
+			}
+			if (dateISO)   { $data.value = dateISO; }
+			if (total)     { $importo.value = parseFloat(total).toFixed(2); }
+
+			autoDownload(file, merchant || ristValue || 'scontrino');
+		  } catch (e) {
+			console.error(e);
+			alert('Errore durante la scansione.');
+		  } finally {
+			// reset per poter riselezionare la stessa foto
+			$scanFile.value = '';
+		  }
+		});
+	  });
+	</script>
 
     <h3>📋 Pasti salvati</h3>
     <div id="lista"></div>
@@ -226,7 +341,7 @@
 </main>
 
 <script>
-const API = "https://fpfood-backend.onrender.com/api";
+const API = "http://localhost:8000/api";
 
 // ----------------------
 // UTENTE (solo prima volta)
@@ -251,18 +366,6 @@ function labelUser(full) {
 }
 
 document.getElementById("utenteLabel").textContent = "Utente: " + labelUser(userFull);
-
-// FPFOOD — hook icona scansione (apre il picker OCR e scrolla alla sezione)
-const scanBtn = document.getElementById("scanBtn");
-if (scanBtn) {
-  scanBtn.addEventListener("click", () => {
-    const ocrSection = document.getElementById("fpfood-ocr");
-    const file = document.getElementById("fpfood-ocr-file");
-    if (ocrSection) ocrSection.scrollIntoView({ behavior: "smooth", block: "start" });
-    if (file) file.click();
-  });
-}
-
 
 // ----------------------
 // Salva pasto

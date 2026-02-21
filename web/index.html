@@ -71,10 +71,7 @@
     </style>
 </head>
 
-<!-- Tesseract.js (CDN) -->
-https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js</script>
-
-</body>
+<body>
 <header>
     <img src="icons/azienda.png" alt="logo" />
     <h2>FPFood</h2>
@@ -211,7 +208,7 @@ https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js</script>
 			autoDownload(file, merchant || ristValue || 'scontrino');
 		  } catch (e) {
 			console.error(e);
-			alert('Errore durante la scansione.');
+			alert('Errore durante la scansione: ' + (e && e.message ? e.message : 'vedi console'));
 		  } finally {
 			// reset per poter riselezionare la stessa foto
 			$scanFile.value = '';
@@ -370,6 +367,9 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("service-worker.js");
 }
 </script>
+
+<!-- Tesseract.js (CDN) -->
+https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js" defer></script>
 
 </body>
 </html>

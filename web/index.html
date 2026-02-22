@@ -300,6 +300,15 @@ if (!localStorage.getItem("fpfood_user")) {
 
 const userFull = localStorage.getItem("fpfood_user");
 
+// Chiave URL robusta (codifica /, spazi, e TUTTI gli apostrofi)
+function _userKey() {
+  // prima codifico tutto
+  let key = encodeURIComponent(userFull || '');
+  // forzo anche i due tipi di apostrofo se rimasti “nudi” nei path logger/stack
+  key = key.replace(/'/g, '%27').replace(/’/g, '%E2%80%99');
+  return key;
+}
+
 // Etichetta utente: M DAngelo
 function labelUser(full) {
     const parts = full.split(" ");
@@ -373,7 +382,7 @@ async function caricaLista() {
   const listaBox = document.getElementById("lista");
   listaBox.innerHTML = "";
 
-  const url = `${API}/pasti/${encodeURIComponent(userFull)}`;
+  const url = `${API}/pasti/${_userKey()}`;
   console.log("[GET] userFull:", userFull);
   console.log("[GET] URL:", url);
 
@@ -510,7 +519,7 @@ async function modifica(id, rist, data, importo) {
 // Totale
 // ----------------------
 async function aggiornaTotale() {
-    const r = await fetch(`${API}/pasti/${encodeURIComponent(userFull)}/totale`);
+	const r = await fetch(`${API}/pasti/${_userKey()}/totale`);
     const j = await r.json();
     document.getElementById("totaleBox").textContent = "Totale: " + j.totale + " €";
 }

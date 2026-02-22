@@ -1,4 +1,4 @@
-const CACHE = "fpfood-v3";
+const CACHE = "fpfood-v4";
 const ASSETS = [
   "index.html",
   "manifest.webmanifest",
@@ -22,10 +22,17 @@ self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
 
   const req = e.request;
+  const url = req.url;
   const isHTML = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
 
+  // 🔒 BYPASS API: mai cache sulle chiamate al backend
+  if (url.includes('fpfood-backend.onrender.com')) {
+    e.respondWith(fetch(req)); // network-only, nessun caching
+    return;
+  }
+
   if (isHTML) {
-    // HTML: network-first così non rimani con index.html vecchio
+    // HTML: network-first per evitare index.html stantio
     e.respondWith(
       fetch(req).then(r => {
         const copy = r.clone();
@@ -36,7 +43,7 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Asset statici: cache-first con salvataggio in cache al primo passaggio
+  // Asset statici: cache-first con "fill" al primo passaggio
   e.respondWith(
     caches.match(req).then(resp => resp || fetch(req).then(r => {
       const copy = r.clone();

@@ -388,7 +388,7 @@ async function caricaLista() {
 
   let r;
   try {
-    r = await fetch(url);
+    r = await fetch(url, { cache: 'no-store' });
   } catch (e) {
     console.error("[GET] Network/CORS error:", e);
     alert("Errore rete nel caricamento lista:\n" + (e && e.message ? e.message : e));
@@ -519,7 +519,7 @@ async function modifica(id, rist, data, importo) {
 // Totale
 // ----------------------
 async function aggiornaTotale() {
-	const r = await fetch(`${API}/pasti/${_userKey()}/totale`);
+	const r = await fetch(`${API}/pasti/${_userKey()}/totale`, { cache: 'no-store' });
     const j = await r.json();
     document.getElementById("totaleBox").textContent = "Totale: " + j.totale + " €";
 }
@@ -530,8 +530,8 @@ caricaLista();
 <script>
 if ("serviceWorker" in navigator) {
   // bump dell'URL per evitare cache del file SW
-  navigator.serviceWorker.register("service-worker.js?v=3").then(reg => {
-    reg.update?.(); // prova a prendere subito l'ultima versione
+  navigator.serviceWorker.register("service-worker.js?v=4").then(reg => {
+    reg.update?.();
   });
 
   // quando subentra il nuovo SW ricarico 1 sola volta

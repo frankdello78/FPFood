@@ -333,6 +333,7 @@ document.getElementById("salvaBtn").onclick = async () => {
 
   // ---- LOG AVVIO ----
   console.log("[POST] URL:", `${API}/pasti`);
+  console.log("[POST] userFull:", userFull);
   console.log("[POST] Payload:", payload);
 
   try {
@@ -373,6 +374,7 @@ async function caricaLista() {
   listaBox.innerHTML = "";
 
   const url = `${API}/pasti/${encodeURIComponent(userFull)}`;
+  console.log("[GET] userFull:", userFull);
   console.log("[GET] URL:", url);
 
   let r;
@@ -400,23 +402,27 @@ async function caricaLista() {
     alert("Errore parse dati lista (non JSON). Vedi console.");
     return;
   }
-    for (const p of dati) {
-        const div = document.createElement("div");
-        div.className = "list-item";
+	// helper robusto per ricavare l'ID dal record
+	function getId(p) {
+	  return p?.id ?? p?._id ?? p?.ID ?? p?.Id ?? null;
+	}
 
-        div.innerHTML = `
-            <div>
-                <b>${p.ristorante}</b><br>
-                ${p.data} — ${p.importo} €
-            </div>
-            <div class="actions">
-                <button onclick="modifica(${p.id}, '${p.ristorante}', '${p.data}', ${p.importo})">Modifica</button>
-                <button class="delete" onclick="elimina(${p.id})">Elimina</button>
-            </div>
-        `;
-
-        listaBox.appendChild(div);
-    }
+	for (const p of dati) {
+	  const id = getId(p);
+	  const div = document.createElement("div");
+	  div.className = "list-item";
+	  div.innerHTML = `
+	  <div>
+		<b>${p.ristorante}</b><br>
+		${p.data} — ${p.importo} €
+	  </div>
+	  <div class="actions">
+		<button onclick="modifica(${id}, '${p.ristorante}', '${p.data}', ${p.importo})">Modifica</button>
+		<button class="delete" onclick="elimina(${id})">Elimina</button>
+	  </div>
+	  `;
+	  listaBox.appendChild(div);
+	}
 
     aggiornaTotale();
 }
@@ -425,39 +431,79 @@ async function caricaLista() {
 // Elimina
 // ----------------------
 async function elimina(id) {
-    if (!confirm("Eliminare pasto?")) return;
+  if (!id) {
+    alert("Elimina: ID non valido.");
+    return;
+  }
+  if (!confirm(`Eliminare pasto #${id}?`)) return;
 
-    await fetch(`${API}/pasti/${id}`, { method: "DELETE" });
-    caricaLista();
+  const url = `${API}/pasti/${id}`;
+  console.log("[DELETE] URL:", url);
+
+  let res;
+  try {
+    res = await fetch(url, { method: "DELETE" });
+  } catch (e) {
+    console.error("[DELETE] Network/CORS error:", e);
+    alert("Errore rete su DELETE:\n" + (e?.message || e));
+    return;
+  }
+
+  console.log("[DELETE] Status:", res.status, res.statusText);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    alert(`Errore eliminazione: ${res.status} ${res.statusText}\n${txt}`);
+    return;
+  }
+  caricaLista();
 }
 
 // ----------------------
 // Modifica
 // ----------------------
 async function modifica(id, rist, data, importo) {
-    const nr = prompt("Ristorante:", rist);
-    if (!nr) return;
+  if (!id) { alert("Modifica: ID non valido."); return; }
 
-    const nd = prompt("Data (YYYY-MM-DD):", data);
-    if (!nd) return;
+  const nr = prompt("Ristorante:", rist);
+  if (nr == null) return;
+  const nd = prompt("Data (YYYY-MM-DD):", data);
+  if (nd == null) return;
+  const ni = prompt("Importo:", importo);
+  if (ni == null) return;
 
-    const ni = prompt("Importo:", importo);
-    if (!ni) return;
+  const payload = {
+    utente: userFull,
+    ristorante: nr,
+    data: nd,
+    importo: parseFloat(ni)
+  };
 
-    const payload = {
-        utente: userFull,
-        ristorante: nr,
-        data: nd,
-        importo: parseFloat(ni)
-    };
+  const url = `${API}/pasti/${id}`;
+  console.log("[PUT] URL:", url);
+  console.log("[PUT] Payload:", payload);
 
-    await fetch(`${API}/pasti/${id}`, {
-        method: "PUT",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(payload)
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
     });
+  } catch (e) {
+    console.error("[PUT] Network/CORS error:", e);
+    alert("Errore rete su PUT:\n" + (e?.message || e));
+    return;
+  }
 
-    caricaLista();
+  console.log("[PUT] Status:", res.status, res.statusText);
+  const txt = await res.text().catch(() => "");
+  if (!res.ok) {
+    console.log("[PUT] Body (text):", txt);
+    alert(`Errore modifica: ${res.status} ${res.statusText}\n${txt}`);
+    return;
+  }
+  console.log("[PUT] OK, body:", txt);
+  caricaLista();
 }
 
 // ----------------------

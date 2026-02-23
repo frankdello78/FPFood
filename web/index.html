@@ -462,7 +462,7 @@ if (!userFull) {
   if (!nome) {
     alert("Login annullato");
     location.reload();
-    return; // blocca l’esecuzione: evita userFull=null e chiamate API su "null"
+    return;
   }
 
   const norm = normalize(nome);
@@ -483,7 +483,7 @@ if (!userFull) {
     }
 
     // Admin verificato → mostra combo utenti
-   const sel = document.createElement("select");
+    const sel = document.createElement("select");
     sel.id = "selettoreUtente";
     sel.style.width = "100%";
     sel.style.padding = "12px";
@@ -503,10 +503,11 @@ if (!userFull) {
 
     sel.addEventListener("change", () => {
       if (!sel.value) return;
-      saveUser(sel.value);    // salva l'ID selezionato
+      saveUser(sel.value);
       location.reload();
     });
   }
+}   //  <--  QUESTA È LA GRAFFA CHE TI MANCA
   
 // Chiave URL robusta (codifica /, spazi, e TUTTI gli apostrofi)
 function _userKey() {

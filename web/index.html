@@ -190,11 +190,56 @@
 				 .trim().replace(/\s+/g,'_').toLowerCase();
 		}
 
-		async function doOCR(file) {
-		  const { data } = await Tesseract.recognize(file, 'ita+eng', {
-			logger: m => console.log(m.status || '', m.progress || '')
+		// === Worker Tesseract persistente (caricato 1 volta e riusato) ===
+		let _ocrWorker = null;
+		async function _getWorker(statusCb) {
+		  if (_ocrWorker) return _ocrWorker;
+		  // logger opzionale
+		  const logger = (m) => {
+			if (statusCb && m?.status && m?.progress != null) {
+			  statusCb(`${m.status} ${Math.round(m.progress*100)}%`);
+			} else {
+			  console.log(m?.status || '', m?.progress || '');
+			}
+		  };
+		  const w = await Tesseract.createWorker('ita+eng', 1, { logger });
+		  _ocrWorker = w;
+		  return _ocrWorker;
+		}
+
+		// Riduci immagine (canvas) per velocizzare l’OCR
+		async function _preprocessToBlob(file, maxSide=1200, quality=0.7) {
+		  const img = await new Promise((res, rej) => {
+			const url = URL.createObjectURL(file);
+			const i = new Image();
+			i.onload = () => res({img:i, url});
+			i.onerror = rej;
+			i.src = url;
 		  });
-		  return data && data.text ? data.text : '';
+		  const {img:im, url} = img;
+		  const scale = Math.min(1, maxSide / Math.max(im.width, im.height));
+		  const w = Math.round(im.width * scale);
+		  const h = Math.round(im.height * scale);
+		  const canvas = document.createElement('canvas');
+		  canvas.width = w; canvas.height = h;
+		  const ctx = canvas.getContext('2d');
+		  ctx.drawImage(im, 0, 0, w, h);
+		  // (volendo si può aggiungere grayscale/contrast, ma già così basta)
+		  const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+		  URL.revokeObjectURL(url);
+		  return blob || file;
+		}
+
+		async function doOCR(file, statusCb) {
+		  const worker = await _getWorker(statusCb);
+		  const small = await _preprocessToBlob(file, 1200, 0.7);
+		  // Config mirata: whitelist numeri e separatori per data/importi, PSM 6 = uniform blocks of text
+		  const config = {
+			tessedit_char_whitelist: '0123456789/.-:',
+			tessedit_pageseg_mode: 6
+		  };
+		  const { data } = await worker.recognize(small, { config });
+		  return (data && data.text) ? data.text : '';
 		}
 
 		function autoDownload(file, merchant) {
@@ -237,18 +282,8 @@
 			  return;
 			}
 
-			setStatus('Avvio OCR (download motore)...');
-			const { data } = await Tesseract.recognize(file, 'ita+eng', {
-			  logger: m => {
-				// m.status: 'loading tesseract core','initializing tesseract','loading language traineddata','recognizing text'
-				if (m?.status && m?.progress != null) {
-				  const pct = Math.round(m.progress * 100);
-				  setStatus(`${m.status} ${pct}%`);
-				}
-			  }
-			});
-
-			const text = (data && data.text) ? data.text : '';
+			setStatus('Avvio OCR...');
+			const text = await doOCR(file, setStatus);
 			console.log('OCR text (first 120):', text.slice(0,120).replace(/\s+/g,' '));
 
 			const { merchant, dateISO, total } = parseQuick(text);

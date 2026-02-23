@@ -367,134 +367,127 @@
 const API = "https://fpfood-backend.onrender.com/api";
 
 // ----------------------
-// UTENTE fisso da elenco DB
+// UTENTE (solo prima volta)
 // ----------------------
-// Elenco ufficiale utenti dal DB principale (id = chiave, label = nome esteso)
-const UTENTI = [
-  { id: "apanella",   label: "Panella Angela" },
-  { id: "cbarca",     label: "Barca Cristian" },
-  { id: "fdelloste",  label: "Dell'oste Francesco" },
-  { id: "ggiancola",  label: "Giancola Gianfranco" },
-  { id: "gIorio",     label: "Iorio Giovanni" },
-  { id: "gromano",    label: "Romano Giuseppe" },
-  { id: "gtanucci",   label: "Tanucci Giuseppe" },
-  { id: "gzollo",     label: "Zollo Gianluca" },
-  { id: "liannella",  label: "Iannella Luigi" },
-  { id: "mberillo",   label: "Berillo Mario" },
-  { id: "mcapitanio", label: "Capitanio Maik" },
-  { id: "mscimone",   label: "Scimone Maurizio" },
-  { id: "ncapitanio", label: "Capitanio Nazzareno" },
-  { id: "niscaro",    label: "Iscaro Nunzio" },
-  { id: "pborzillo",  label: "Borzillo Pompeo" },
-  { id: "smercurio",  label: "Mercurio Stefano" },
-  { id: "ssarracino", label: "Sarracino Sandro" },
-  { id: "vdangelo",   label: "D'angelo Veronica" }
+/* === FPFOOD — USER MATCHING AVANZATO === */
+
+/* Lista utenti autorizzati */
+const FPFOOD_USERS = [
+ { id: "apanella", full: "Panella Angela" },
+ { id: "cbarca", full: "Barca Cristian" },
+ { id: "fdelloste", full: "Dell'oste Francesco" },
+ { id: "ggiancola", full: "Giancola Gianfranco" },
+ { id: "gIorio", full: "Iorio Giovanni" },
+ { id: "gromano", full: "Romano Giuseppe" },
+ { id: "gtanucci", full: "Tanucci Giuseppe" },
+ { id: "gzollo", full: "Zollo Gianluca" },
+ { id: "liannella", full: "Iannella Luigi" },
+ { id: "mberillo", full: "Berillo Mario" },
+ { id: "mcapitanio", full: "Capitanio Maik" },
+ { id: "mscimone", full: "Scimone Maurizio" },
+ { id: "ncapitanio", full: "Capitanio Nazzareno" },
+ { id: "niscaro", full: "Iscaro Nunzio" },
+ { id: "pborzillo", full: "Borzillo Pompeo" },
+ { id: "smercurio", full: "Mercurio Stefano" },
+ { id: "ssarracino", full: "Sarracino Sandro" },
+ { id: "vdangelo", full: "D'angelo Veronica" }
 ];
 
-// Utenti autorizzati a scegliere manualmente dalla combo
-const ADMIN_USERS = [
-  "fdelloste"
-];
-
-// helper per lavorare sempre con l’ID
-// Lista ID
-const __ALL_IDS = UTENTI.map(u => u.id);
-
-// Mappa normalizzata → ID (multi-chiave, robusta)
-const UTENTI_NORM_MAP = {};
-
-for (const u of UTENTI) {
-  const label = u.label; // es. "Dell'oste Francesco"
-  const parts = label.split(" ");
-
-  // Normalizzazioni avanzate
-  const fullNorm = normalize(label); // dellostefrancesco
-
-  // Nome e cognome (gratis perché nel CSV è "Cognome Nome")
-  const cognome = normalize(parts[0] || "");
-  const nome = normalize(parts[1] || "");
-
-  // Tutte le varianti accettate
-  const variants = [
-    fullNorm,                // cognomenome
-    nome + cognome,          // nomecognome
-    nome,                    // nome
-    cognome                  // cognome
-  ];
-
-  for (const v of variants) {
-    if (!UTENTI_NORM_MAP[v]) {
-      UTENTI_NORM_MAP[v] = u.id;
-    }
-  }
+/* Normalizzazione robusta */
+function norm(s) {
+ return (s || "")
+   .toLowerCase()
+   .normalize("NFD")
+   .replace(/[\u0300-\u036f]/g, "")
+   .replace(/['’]/g, "")
+   .replace(/\s+/g, " ")
+   .trim();
 }
 
-// Normalizza stringa: minuscole, rimuove accenti, apostrofi, spazi
-function normalize(s) {
-  return (s || "")
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // accenti
-    .replace(/['’`]/g, "")                           // apostrofi
-    .replace(/\s+/g, "");                           // spazi
+/* Similarità minima (Levenshtein dist ≤ 2) */
+function lev(a, b) {
+ const m = a.length, n = b.length;
+ const dp = Array.from({length: m+1}, () => Array(n+1).fill(0));
+ for (let i=0;i<=m;i++) dp[i][0]=i;
+ for (let j=0;j<=n;j++) dp[0][j]=j;
+ for (let i=1;i<=m;i++){
+   for (let j=1;j<=n;j++){
+     dp[i][j] = Math.min(
+       dp[i-1][j] + 1,
+       dp[i][j-1] + 1,
+       dp[i-1][j-1] + (a[i-1]===b[j-1]?0:1)
+     );
+   }
+ }
+ return dp[m][n];
 }
 
-// Label leggibile da ID
-function getUserLabelById(id) {
-  const u = UTENTI.find(x => x.id === id);
-  return u ? u.label : id;
+/* Funzione match */
+function matchUser(input) {
+ const nIn = norm(input);
+ if (!nIn) return null;
+
+ let best = null;
+ let bestScore = 999;
+
+ for (const u of FPFOOD_USERS) {
+   const nDb = norm(u.full);
+
+   // Prova → diretto / invertito
+   const parts = nDb.split(" ");
+   const inv = parts.slice().reverse().join(" ");
+
+   const candidates = [nDb, inv];
+
+   for (const c of candidates) {
+     const dist = lev(nIn, c);
+     if (dist < bestScore) {
+       bestScore = dist;
+       best = u;
+     }
+   }
+ }
+
+ return bestScore <= 2 ? best : null;
 }
 
-function loadUser() {
-  const u = localStorage.getItem("fpfood_user");
-  if (u && __ALL_IDS.includes(u)) return u;   // deve essere un ID valido
-  return null;
+/* Primo login */
+let storedId = localStorage.getItem("fpfood_user_id");
+let storedFull = localStorage.getItem("fpfood_user_full");
+
+if (!storedId) {
+ let nome = "";
+ while (!nome.trim()) {
+   nome = prompt("Inserisci Nome e Cognome:");
+ }
+
+ const match = matchUser(nome);
+ if (!match) {
+   alert("Utente non trovato. Riprova.");
+   location.reload();
+ }
+
+ localStorage.setItem("fpfood_user_id", match.id);
+ localStorage.setItem("fpfood_user_full", match.full);
+
+ storedId = match.id;
+ storedFull = match.full;
 }
-function saveUser(u) { localStorage.setItem("fpfood_user", u); }
 
-let userFull = loadUser();
+/* Utente corrente */
+const userId = storedId;
+const userFull = storedFull;
 
-// Se utente NON salvato → chiediamo Nome/Cognome
-if (!userFull) {
-  const nome = prompt("Inserisci Nome e Cognome:");
-  const norm = normalize(nome);
+/* Admin */
+const isAdmin = (userId === "fdelloste");
 
-  // match diretto nel DB
-  const found = UTENTI_NORM_MAP[norm];
-
-  if (found) {
-    // trovato 1:1
-    saveUser(found);
-    userFull = found;
-  } else {
-    // no match → mostriamo combo utenti
-    const sel = document.createElement("select");
-    sel.id = "selettoreUtente";
-    sel.style.width = "100%";
-    sel.style.padding = "12px";
-    sel.style.border = "1px solid #ccc";
-    sel.style.borderRadius = "6px";
-    sel.style.marginBottom = "12px";
-    sel.innerHTML = `&lt;option value=""&gt;Seleziona utente…&lt;/option&gt;` +
-      UTENTI
-        .slice()
-        .sort((a,b) =&gt; a.label.localeCompare(b.label,'it'))
-        .map(u =&gt; `&lt;option value="${u.id}"&gt;${u.label} (${u.id})&lt;/option&gt;`)
-        .join("");
-
-    document.querySelector("main").prepend(sel);
-
-    sel.addEventListener("change", () =&gt; {
-      if (!sel.value) return;
-      saveUser(sel.value);
-      location.reload();
-    });
-  }
-}
+// === ADMIN CHECK (solo fdelloste) ===
+const isAdmin = (userFull.trim().toLowerCase() === "fdelloste");
 
 // Chiave URL robusta (codifica /, spazi, e TUTTI gli apostrofi)
 function _userKey() {
   // prima codifico tutto
-  let key = encodeURIComponent(userFull);
+  let key = encodeURIComponent(userFull || '');
   // forzo anche i due tipi di apostrofo se rimasti “nudi” nei path logger/stack
   key = key.replace(/'/g, '%27').replace(/’/g, '%E2%80%99');
   return key;
@@ -509,24 +502,7 @@ function labelUser(full) {
     return nome[0].toUpperCase() + " " + cognome;
 }
 
-// Mostro "Nome Esteso (id)"
-document.getElementById("utenteLabel").textContent =
-  "Utente: " + getUserLabelById(userFull) + " (" + userFull + ")";
-
-// Bottone "Cambia utente"
-const btnReset = document.createElement("button");
-btnReset.textContent = "Cambia utente";
-btnReset.style.marginLeft = "12px";
-btnReset.style.padding = "6px 10px";
-btnReset.style.fontSize = "14px";
-btnReset.style.background = "#444";
-btnReset.style.color = "white";
-btnReset.style.borderRadius = "6px";
-btnReset.onclick = () => {
-  localStorage.removeItem("fpfood_user");
-  location.reload();
-};
-document.getElementById("utenteLabel").after(btnReset);
+document.getElementById("utenteLabel").textContent = "Utente: " + labelUser(userFull);
 
 // === Punto 2: listener filtri ===
 document.getElementById("filtroMese")?.addEventListener("change", () => caricaLista());

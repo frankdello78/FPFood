@@ -472,8 +472,7 @@ if (!userFull) {
     // match automatico → login diretto
     saveUser(found);
     userFull = found;
-  }
-  else {
+  } else {
     // Nessun match → SOLO amministratori possono procedere
     const adminId = prompt("Utente non riconosciuto.\nInserisci ID amministratore per procedere:");
     if (!adminId || !ADMIN_USERS.includes(adminId)) {
@@ -492,31 +491,22 @@ if (!userFull) {
     sel.style.marginBottom = "12px";
 
     sel.innerHTML =
-      `<option value="">Seleziona utente…</option>` +
+      `&lt;option value=""&gt;Seleziona utente…&lt;/option&gt;` +
       UTENTI
         .slice()
-        .sort((a, b) => a.label.localeCompare(b.label, "it"))
-        .map(u => `<option value="${u.id}">${u.label} (${u.id})</option>`)
+        .sort((a, b) =&gt; a.label.localeCompare(b.label, "it"))
+        .map(u =&gt; `&lt;option value="${u.id}"&gt;${u.label} (${u.id})&lt;/option&gt;`)
         .join("");
 
     document.querySelector("main").prepend(sel);
 
-    sel.addEventListener("change", () => {
+    sel.addEventListener("change", () =&gt; {
       if (!sel.value) return;
       saveUser(sel.value);
       location.reload();
     });
   }
-}   //  <--  QUESTA È LA GRAFFA CHE TI MANCA
-  
-// Chiave URL robusta (codifica /, spazi, e TUTTI gli apostrofi)
-function _userKey() {
-  // prima codifico tutto
-  let key = encodeURIComponent(userFull);
-  // forzo anche i due tipi di apostrofo se rimasti “nudi” nei path logger/stack
-  key = key.replace(/'/g, '%27').replace(/’/g, '%E2%80%99');
-  return key;
-}
+} // <-- chiusura if (!userFull)
 
 // Etichetta utente: M DAngelo
 function labelUser(full) {

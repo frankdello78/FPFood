@@ -460,6 +460,7 @@ if (!userFull) {
   if (!nome) {
     alert("Login annullato");
     location.reload();
+    return; // blocca l’esecuzione: evita userFull=null e chiamate API su "null"
   }
 
   const norm = normalize(nome);
@@ -471,22 +472,16 @@ if (!userFull) {
     userFull = found;
   }
   else {
-    // nessun match → accesso solo per amministratori
-    // se NON admin → errore e basta
-    let adminOverride = false;
-
-    // tentiamo una seconda domanda per admin
-    if (confirm("Utente non riconosciuto.\nSei un amministratore?")) {
-      adminOverride = true;
-    }
-
-    if (!adminOverride) {
-      alert("Utente non riconosciuto. Riprovare.");
+    // Nessun match → SOLO amministratori possono procedere
+    const adminId = prompt("Utente non riconosciuto.\nInserisci ID amministratore per procedere:");
+    if (!adminId || !ADMIN_USERS.includes(adminId)) {
+      alert("Accesso negato. Utente non riconosciuto.");
       location.reload();
+      return;
     }
 
-    // ADMIN → mostriamo combo utenti
-    const sel = document.createElement("select");
+    // Admin verificato → mostra combo utenti
+   const sel = document.createElement("select");
     sel.id = "selettoreUtente";
     sel.style.width = "100%";
     sel.style.padding = "12px";
@@ -506,7 +501,7 @@ if (!userFull) {
 
     sel.addEventListener("change", () => {
       if (!sel.value) return;
-      saveUser(sel.value);
+      saveUser(sel.value);    // salva l'ID selezionato
       location.reload();
     });
   }

@@ -369,7 +369,8 @@
 </main>
 
 <script>
-const API = "https://fpfood-backend.onrender.com/api";
+// const API = "https://fpfood-backend.onrender.com/api";
+const API = "http://127.0.0.1:8000/api";
 
 // ----------------------
 // UTENTE (solo prima volta)
@@ -784,7 +785,7 @@ caricaLista();
 <script>
 if ("serviceWorker" in navigator) {
   // bump dell'URL per evitare cache del file SW
-  navigator.serviceWorker.register("service-worker.js?v=5").then(reg => {
+  navigator.serviceWorker.register("service-worker.js?v=6").then(reg => {
     reg.update?.();
   });
 

@@ -391,21 +391,10 @@ const UTENTI = [
   { id: "vdangelo",   label: "D'angelo Veronica" }
 ];
 
-// Normalizza stringa: minuscole, accenti, apostrofi, spazi
-function normalize(s) {
-  return (s || "")
-    .toLowerCase()
-	.normalize("NFD").replace(/[\u0300-\u036f]/g, "") // accenti
-	.replace(/['’`]/g, "") // apostrofi
-    .replace(/\s+/g, "");                               // spazi
-}
-
-
 // Utenti autorizzati a scegliere manualmente dalla combo
 const ADMIN_USERS = [
   "fdelloste"
 ];
-
 
 // helper per lavorare sempre con l’ID
 // Lista ID
@@ -440,6 +429,15 @@ for (const u of UTENTI) {
   }
 }
 
+// Normalizza stringa: minuscole, rimuove accenti, apostrofi, spazi
+function normalize(s) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // accenti
+    .replace(/['’`]/g, "")                           // apostrofi
+    .replace(/\s+/g, "");                           // spazi
+}
+
 // Label leggibile da ID
 function getUserLabelById(id) {
   const u = UTENTI.find(x => x.id === id);
@@ -457,31 +455,18 @@ let userFull = loadUser();
 
 // Se utente NON salvato → chiediamo Nome/Cognome
 if (!userFull) {
-
-  let nome = prompt("Inserisci Nome e Cognome:");
-  if (!nome) {
-    alert("Login annullato");
-    location.reload();
-    return;
-  }
-
+  const nome = prompt("Inserisci Nome e Cognome:");
   const norm = normalize(nome);
+
+  // match diretto nel DB
   const found = UTENTI_NORM_MAP[norm];
 
   if (found) {
-    // match automatico → login diretto
+    // trovato 1:1
     saveUser(found);
     userFull = found;
   } else {
-    // Nessun match → SOLO amministratori possono procedere
-    const adminId = prompt("Utente non riconosciuto.\nInserisci ID amministratore per procedere:");
-    if (!adminId || !ADMIN_USERS.includes(adminId)) {
-      alert("Accesso negato. Utente non riconosciuto.");
-      location.reload();
-      return;
-    }
-
-    // Admin verificato → mostra combo utenti
+    // no match → mostriamo combo utenti
     const sel = document.createElement("select");
     sel.id = "selettoreUtente";
     sel.style.width = "100%";
@@ -489,12 +474,10 @@ if (!userFull) {
     sel.style.border = "1px solid #ccc";
     sel.style.borderRadius = "6px";
     sel.style.marginBottom = "12px";
-
-    sel.innerHTML =
-      `&lt;option value=""&gt;Seleziona utente…&lt;/option&gt;` +
+    sel.innerHTML = `&lt;option value=""&gt;Seleziona utente…&lt;/option&gt;` +
       UTENTI
         .slice()
-        .sort((a, b) =&gt; a.label.localeCompare(b.label, "it"))
+        .sort((a,b) =&gt; a.label.localeCompare(b.label,'it'))
         .map(u =&gt; `&lt;option value="${u.id}"&gt;${u.label} (${u.id})&lt;/option&gt;`)
         .join("");
 
@@ -506,7 +489,16 @@ if (!userFull) {
       location.reload();
     });
   }
-} // <-- chiusura if (!userFull)
+}
+
+// Chiave URL robusta (codifica /, spazi, e TUTTI gli apostrofi)
+function _userKey() {
+  // prima codifico tutto
+  let key = encodeURIComponent(userFull);
+  // forzo anche i due tipi di apostrofo se rimasti “nudi” nei path logger/stack
+  key = key.replace(/'/g, '%27').replace(/’/g, '%E2%80%99');
+  return key;
+}
 
 // Etichetta utente: M DAngelo
 function labelUser(full) {

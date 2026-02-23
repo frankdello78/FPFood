@@ -1,4 +1,4 @@
-const CACHE = "fpfood-v4";
+const CACHE = "fpfood-v5";
 const ASSETS = [
   "index.html",
   "manifest.webmanifest",

@@ -466,38 +466,23 @@ async function caricaLista() {
 
   let dati;
   const txt = await r.text().catch(() => "");
-  try { dati = txt ? JSON.parse(txt) : []; }
-  catch (e) {
+  let dati;
+  try {
+    dati = txt ? JSON.parse(txt) : [];
+  } catch (e) {
     console.error("[GET] JSON parse error:", e, "Body:", txt);
     alert("Errore parse dati lista (non JSON). Vedi console.");
     return;
   }
 
-  // === APPLICA FILTRI CLIENT-SIDE ===
-  const fm = document.getElementById("filtroMese")?.value || ""; // YYYY-MM
-  const fr = document.getElementById("filtroRisto")?.value || "";
+// === APPLICA FILTRI CLIENT-SIDE ===
+const fm = document.getElementById("filtroMese")?.value || ""; // YYYY-MM
+const fr = document.getElementById("filtroRisto")?.value || "";
 
-  let filtrati = dati;
+let filtrati = dati;
 
-  // filtro mese
-  if (fm) {
-    filtrati = filtrati.filter(p => (p.data || "").startsWith(fm));
-  }
-
-  // filtro ristorante
-  if (fr) {
-    filtrati = filtrati.filter(p => p.ristorante === fr);
-  }
-
-  // (il resto della funzione rimane identico, ma usa 'filtrati' INVECE di 'dati')
-
-  console.log("[GET] Status:", r.status, r.statusText);
-  if (!r.ok) {
-    const txt = await r.text().catch(() => "");
-    console.log("[GET] Body (text):", txt);
-    alert(`Errore caricamento lista: ${r.status} ${r.statusText}\n${txt}`);
-    return;
-  }
+if (fm) filtrati = filtrati.filter(p => (p.data || "").startsWith(fm));
+if (fr) filtrati = filtrati.filter(p => p.ristorante === fr));
 
   let dati;
   const txt = await r.text().catch(() => "");

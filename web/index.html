@@ -320,15 +320,13 @@
 	  });
 	</script>
 
-    <!-- FILTRI RIEPILOGO -->
+	<!-- FILTRI RIEPILOGO (Punto 2) -->
 	<div style="display:flex;gap:12px;align-items:center;margin-top:20px;margin-bottom:8px">
-
 	  <!-- Filtro mese -->
 	  <div style="flex:1;display:flex;flex-direction:column">
 		<label style="font-size:14px">Mese</label>
 		<input type="month" id="filtroMese" style="height:40px">
 	  </div>
-
 	  <!-- Filtro ristorante -->
 	  <div style="flex:1;display:flex;flex-direction:column">
 		<label style="font-size:14px">Ristorante</label>
@@ -338,7 +336,6 @@
 		  <option value="Sace Group">Sace Group</option>
 		</select>
 	  </div>
-
 	</div>
 
 	<h3>📋 Pasti salvati</h3>
@@ -384,13 +381,9 @@ function labelUser(full) {
 
 document.getElementById("utenteLabel").textContent = "Utente: " + labelUser(userFull);
 
-// === FILTRI RIEPILOGO ===
-const _fMese = document.getElementById("filtroMese");
-const _fRisto = document.getElementById("filtroRisto");
-
-// ogni volta che cambio mese o ristorante → ricarico lista filtrata
-_fMese?.addEventListener("change", () => caricaLista());
-_fRisto?.addEventListener("change", () => caricaLista());
+// === Punto 2: listener filtri ===
+document.getElementById("filtroMese")?.addEventListener("change", () => caricaLista());
+document.getElementById("filtroRisto")?.addEventListener("change", () => caricaLista());
 
 // ----------------------
 // Salva pasto
@@ -448,8 +441,10 @@ document.getElementById("salvaBtn").onclick = async () => {
 };
 
 // ----------------------
-// Carica lista pasti
+// Carica lista pasti + FILTRI (mese/ristorante) 
 // ----------------------
+let __ultimo_filtrato = [];
+
 async function caricaLista() {
   const listaBox = document.getElementById("lista");
   listaBox.innerHTML = "";
@@ -457,64 +452,60 @@ async function caricaLista() {
   const url = `${API}/pasti/${_userKey()}`;
   let r;
   try {
-    r = await fetch(url, { cache: 'no-store' });
+    r = await fetch(url, { cache: "no-store" });
   } catch (e) {
     console.error("[GET] Network/CORS error:", e);
-    alert("Errore rete nel caricamento lista:\n" + (e && e.message ? e.message : e));
+    alert("Errore rete nel caricamento lista.");
+    return;
+  }
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    alert(`Errore caricamento lista: ${r.status} ${r.statusText}\n${txt}`);
     return;
   }
 
-  let dati;
   const txt = await r.text().catch(() => "");
-  let dati;
-  try {
-    dati = txt ? JSON.parse(txt) : [];
-  } catch (e) {
-    console.error("[GET] JSON parse error:", e, "Body:", txt);
-    alert("Errore parse dati lista (non JSON). Vedi console.");
-    return;
-  }
-
-// === APPLICA FILTRI CLIENT-SIDE ===
-const fm = document.getElementById("filtroMese")?.value || ""; // YYYY-MM
-const fr = document.getElementById("filtroRisto")?.value || "";
-
-let filtrati = dati;
-
-if (fm) filtrati = filtrati.filter(p => (p.data || "").startsWith(fm));
-if (fr) filtrati = filtrati.filter(p => p.ristorante === fr));
-
-  let dati;
-  const txt = await r.text().catch(() => "");
+  let dati = [];
   try { dati = txt ? JSON.parse(txt) : []; }
   catch (e) {
     console.error("[GET] JSON parse error:", e, "Body:", txt);
-    alert("Errore parse dati lista (non JSON). Vedi console.");
+    alert("Errore parse dati lista (non JSON).");
     return;
   }
-	// helper robusto per ricavare l'ID dal record
-	function getId(p) {
-	  return p?.id ?? p?._id ?? p?.ID ?? p?.Id ?? null;
-	}
 
-	for (const p of filtrati) {
-	  const id = getId(p);
-	  const div = document.createElement("div");
-	  div.className = "list-item";
-	  div.innerHTML = `
-	  <div>
-		<b>${p.ristorante}</b><br>
-		${p.data} — ${p.importo} €
-	  </div>
-	  <div class="actions">
-		<button onclick="modifica(${id}, '${p.ristorante}', '${p.data}', ${p.importo})">Modifica</button>
-		<button class="delete" onclick="elimina(${id})">Elimina</button>
-	  </div>
-	  `;
-	  listaBox.appendChild(div);
-	}
+  // === FILTRI Punto 2 ===
+  const fm = document.getElementById("filtroMese")?.value || "";   // YYYY-MM
+  const fr = document.getElementById("filtroRisto")?.value || "";  // string o "" (Tutti)
 
-    aggiornaTotale();
+  let filtrati = dati;
+  if (fm) filtrati = filtrati.filter(p => (p.data || "").startsWith(fm));
+  if (fr) filtrati = filtrati.filter(p => p.ristorante === fr);
+
+  __ultimo_filtrato = filtrati;
+
+  // helper ID
+  const getId = p => p?.id ?? p?._id ?? p?.ID ?? p?.Id ?? null;
+
+  for (const p of filtrati) {
+    const id = getId(p);
+    if (!id) continue;
+
+    const div = document.createElement("div");
+    div.className = "list-item";
+    div.innerHTML = `
+      <div>
+        <b>${p.ristorante}</b><br>
+        ${p.data} — ${p.importo} €
+      </div>
+      <div class="actions">
+        <button onclick="modifica(${id}, '${p.ristorante}', '${p.data}', ${p.importo})">Modifica</button>
+        <button class="delete" onclick="elimina(${id})">Elimina</button>
+      </div>
+    `;
+    listaBox.appendChild(div);
+  }
+
+  aggiornaTotale(); // ora calcola dal filtrato
 }
 
 // ----------------------
@@ -599,10 +590,9 @@ async function modifica(id, rist, data, importo) {
 // ----------------------
 // Totale
 // ----------------------
-async function aggiornaTotale() {
-	const r = await fetch(`${API}/pasti/${_userKey()}/totale`, { cache: 'no-store' });
-    const j = await r.json();
-    document.getElementById("totaleBox").textContent = "Totale: " + j.totale + " €";
+function aggiornaTotale() {
+  const sum = (__ultimo_filtrato || []).reduce((acc, p) => acc + (parseFloat(p.importo) || 0), 0);
+  document.getElementById("totaleBox").textContent = "Totale: " + sum.toFixed(2) + " €";
 }
 
 caricaLista();

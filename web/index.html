@@ -31,14 +31,32 @@
             margin: auto;
         }
         label { margin-top: 12px; display: block; }
-        input, select, button {
-            width: 100%;
-            padding: 12px;
-            font-size: 16px;
-            margin-top: 6px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-        }
+		input, select, button {
+		 width: 100%;
+		 padding: 12px;
+		 font-size: 16px;
+		 margin-top: 6px;
+		 border-radius: 6px;
+		 border: 1px solid #ccc;
+		 box-sizing: border-box;       /* FIX 1 */
+		 min-height: 44px;             /* FIX 2 */
+		}
+
+		/* FIX 3: Contenitore filtri, impedisce accavallamento */
+		.filtro-row {
+		 display: flex;
+		 gap: 12px;
+		 align-items: center;
+		 width: 100%;
+		}
+
+		/* FIX 4: Colonne che non si sovrappongono */
+		.filtro-col {
+		 flex: 1;
+		 display: flex;
+		 flex-direction: column;
+		 min-width: 0;                 /* FIX CRUCIALE */
+		}
         button {
             background: #0066cc;
             color: white;
@@ -321,14 +339,14 @@
 	</script>
 
 	<!-- FILTRI RIEPILOGO (Punto 2) -->
-	<div style="display:flex;gap:12px;align-items:center;margin-top:20px;margin-bottom:8px">
+	<div class="filtro-row" style="margin-top:20px;margin-bottom:8px">
 	  <!-- Filtro mese -->
-	  <div style="flex:1;display:flex;flex-direction:column">
+	  <div class="filtro-col">
 		<label style="font-size:14px">Mese</label>
 		<input type="month" id="filtroMese" style="height:40px">
 	  </div>
 	  <!-- Filtro ristorante -->
-	  <div style="flex:1;display:flex;flex-direction:column">
+	  <div class="filtro-col">
 		<label style="font-size:14px">Ristorante</label>
 		<select id="filtroRisto" style="height:40px">
 		  <option value="">Tutti</option>

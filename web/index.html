@@ -395,11 +395,33 @@ const UTENTI = [
 // Lista ID
 const __ALL_IDS = UTENTI.map(u => u.id);
 
-// Mappa normalizzata DB → ID
+// Mappa normalizzata → ID (multi-chiave, robusta)
 const UTENTI_NORM_MAP = {};
+
 for (const u of UTENTI) {
-  const norm = normalize(u.label); // normalizzo il NOME COMPLETO
-  UTENTI_NORM_MAP[norm] = u.id;
+  const label = u.label; // es. "Dell'oste Francesco"
+  const parts = label.split(" ");
+
+  // Normalizzazioni avanzate
+  const fullNorm = normalize(label); // dellostefrancesco
+
+  // Nome e cognome (gratis perché nel CSV è "Cognome Nome")
+  const cognome = normalize(parts[0] || "");
+  const nome = normalize(parts[1] || "");
+
+  // Tutte le varianti accettate
+  const variants = [
+    fullNorm,                // cognomenome
+    nome + cognome,          // nomecognome
+    nome,                    // nome
+    cognome                  // cognome
+  ];
+
+  for (const v of variants) {
+    if (!UTENTI_NORM_MAP[v]) {
+      UTENTI_NORM_MAP[v] = u.id;
+    }
+  }
 }
 
 // Normalizza stringa: minuscole, rimuove accenti, apostrofi, spazi
@@ -447,16 +469,16 @@ if (!userFull) {
     sel.style.border = "1px solid #ccc";
     sel.style.borderRadius = "6px";
     sel.style.marginBottom = "12px";
-    sel.innerHTML = `<option value="">Seleziona utente…</option>` +
+    sel.innerHTML = `&lt;option value=""&gt;Seleziona utente…&lt;/option&gt;` +
       UTENTI
         .slice()
-        .sort((a,b) => a.label.localeCompare(b.label,'it'))
-        .map(u => `<option value="${u.id}">${u.label} (${u.id})</option>`)
+        .sort((a,b) =&gt; a.label.localeCompare(b.label,'it'))
+        .map(u =&gt; `&lt;option value="${u.id}"&gt;${u.label} (${u.id})&lt;/option&gt;`)
         .join("");
 
     document.querySelector("main").prepend(sel);
 
-    sel.addEventListener("change", () => {
+    sel.addEventListener("change", () =&gt; {
       if (!sel.value) return;
       saveUser(sel.value);
       location.reload();

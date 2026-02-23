@@ -504,6 +504,61 @@ function labelUser(full) {
 
 document.getElementById("utenteLabel").textContent = "Utente: " + labelUser(userFull);
 
+/* === CAMBIO UTENTE === */
+(function(){
+  const cont = document.getElementById("utenteLabel").parentElement;
+  const btn = document.createElement("button");
+  btn.textContent = "Cambia utente";
+  btn.style.padding = "6px 12px";
+  btn.style.fontSize = "14px";
+  btn.style.borderRadius = "6px";
+  btn.style.background = "#888";
+  btn.style.color = "white";
+  btn.style.border = "none";
+  btn.style.cursor = "pointer";
+
+  cont.appendChild(btn);
+
+  btn.onclick = () => {
+
+    /* ADMIN → lista utenti */
+    if (isAdmin) {
+      let list = "Seleziona utente:\n\n";
+      FPFOOD_USERS.forEach(u => { list += `${u.id} — ${u.full}\n`; });
+      const sel = prompt(list + "\n\nInserisci ID utente esatto:");
+      if (!sel) return;
+
+      const found = FPFOOD_USERS.find(u => u.id.toLowerCase() === sel.toLowerCase());
+      if (!found) {
+        alert("ID non valido.");
+        return;
+      }
+
+      localStorage.setItem("fpfood_user_id", found.id);
+      localStorage.setItem("fpfood_user_full", found.full);
+      location.reload();
+      return;
+    }
+
+    /* NON ADMIN → prompt nome e cognome e fuzzy match */
+    let nome = "";
+    while (!nome.trim()) {
+      nome = prompt("Inserisci Nome e Cognome:");
+      if (nome === null) return;
+    }
+
+    const match = matchUser(nome);
+    if (!match) {
+      alert("Utente non trovato. Riprova.");
+      return;
+    }
+
+    localStorage.setItem("fpfood_user_id", match.id);
+    localStorage.setItem("fpfood_user_full", match.full);
+    location.reload();
+  };
+})();
+
 // === Punto 2: listener filtri ===
 document.getElementById("filtroMese")?.addEventListener("change", () => caricaLista());
 document.getElementById("filtroRisto")?.addEventListener("change", () => caricaLista());

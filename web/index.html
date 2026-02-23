@@ -320,7 +320,28 @@
 	  });
 	</script>
 
-    <h3>📋 Pasti salvati</h3>
+    <!-- FILTRI RIEPILOGO -->
+	<div style="display:flex;gap:12px;align-items:center;margin-top:20px;margin-bottom:8px">
+
+	  <!-- Filtro mese -->
+	  <div style="flex:1;display:flex;flex-direction:column">
+		<label style="font-size:14px">Mese</label>
+		<input type="month" id="filtroMese" style="height:40px">
+	  </div>
+
+	  <!-- Filtro ristorante -->
+	  <div style="flex:1;display:flex;flex-direction:column">
+		<label style="font-size:14px">Ristorante</label>
+		<select id="filtroRisto" style="height:40px">
+		  <option value="">Tutti</option>
+		  <option value="Orto dei longobardi">Orto dei longobardi</option>
+		  <option value="Sace Group">Sace Group</option>
+		</select>
+	  </div>
+
+	</div>
+
+	<h3>📋 Pasti salvati</h3>
     <div id="lista"></div>
 
     <div class="totale" id="totaleBox">Totale: 0 €</div>
@@ -362,6 +383,14 @@ function labelUser(full) {
 }
 
 document.getElementById("utenteLabel").textContent = "Utente: " + labelUser(userFull);
+
+// === FILTRI RIEPILOGO ===
+const _fMese = document.getElementById("filtroMese");
+const _fRisto = document.getElementById("filtroRisto");
+
+// ogni volta che cambio mese o ristorante → ricarico lista filtrata
+_fMese?.addEventListener("change", () => caricaLista());
+_fRisto?.addEventListener("change", () => caricaLista());
 
 // ----------------------
 // Salva pasto
@@ -426,9 +455,6 @@ async function caricaLista() {
   listaBox.innerHTML = "";
 
   const url = `${API}/pasti/${_userKey()}`;
-  console.log("[GET] userFull:", userFull);
-  console.log("[GET] URL:", url);
-
   let r;
   try {
     r = await fetch(url, { cache: 'no-store' });
@@ -437,6 +463,33 @@ async function caricaLista() {
     alert("Errore rete nel caricamento lista:\n" + (e && e.message ? e.message : e));
     return;
   }
+
+  let dati;
+  const txt = await r.text().catch(() => "");
+  try { dati = txt ? JSON.parse(txt) : []; }
+  catch (e) {
+    console.error("[GET] JSON parse error:", e, "Body:", txt);
+    alert("Errore parse dati lista (non JSON). Vedi console.");
+    return;
+  }
+
+  // === APPLICA FILTRI CLIENT-SIDE ===
+  const fm = document.getElementById("filtroMese")?.value || ""; // YYYY-MM
+  const fr = document.getElementById("filtroRisto")?.value || "";
+
+  let filtrati = dati;
+
+  // filtro mese
+  if (fm) {
+    filtrati = filtrati.filter(p => (p.data || "").startsWith(fm));
+  }
+
+  // filtro ristorante
+  if (fr) {
+    filtrati = filtrati.filter(p => p.ristorante === fr);
+  }
+
+  // (il resto della funzione rimane identico, ma usa 'filtrati' INVECE di 'dati')
 
   console.log("[GET] Status:", r.status, r.statusText);
   if (!r.ok) {
@@ -459,7 +512,7 @@ async function caricaLista() {
 	  return p?.id ?? p?._id ?? p?.ID ?? p?.Id ?? null;
 	}
 
-	for (const p of dati) {
+	for (const p of filtrati) {
 	  const id = getId(p);
 	  const div = document.createElement("div");
 	  div.className = "list-item";

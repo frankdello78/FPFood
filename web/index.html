@@ -392,9 +392,26 @@ const UTENTI = [
 ];
 
 // helper per lavorare sempre con l’ID
+// Lista ID
 const __ALL_IDS = UTENTI.map(u => u.id);
 
-// helper per ottenere la label leggibile a partire dall’ID
+// Mappa normalizzata DB → ID
+const UTENTI_NORM_MAP = {};
+for (const u of UTENTI) {
+  const norm = normalize(u.label); // normalizzo il NOME COMPLETO
+  UTENTI_NORM_MAP[norm] = u.id;
+}
+
+// Normalizza stringa: minuscole, rimuove accenti, apostrofi, spazi
+function normalize(s) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // accenti
+    .replace(/['’`]/g, "")                           // apostrofi
+    .replace(/\s+/g, "");                           // spazi
+}
+
+// Label leggibile da ID
 function getUserLabelById(id) {
   const u = UTENTI.find(x => x.id === id);
   return u ? u.label : id;
@@ -409,32 +426,43 @@ function saveUser(u) { localStorage.setItem("fpfood_user", u); }
 
 let userFull = loadUser();
 
-// Se non esiste → mostra combo utente (con NOME ESTESO + ID)
+// Se utente NON salvato → chiediamo Nome/Cognome
 if (!userFull) {
-  const sel = document.createElement("select");
-  sel.id = "selettoreUtente";
-  sel.style.width = "100%";
-  sel.style.padding = "12px";
-  sel.style.border = "1px solid #ccc";
-  sel.style.borderRadius = "6px";
-  sel.style.marginBottom = "12px";
-  // opzione placeholder
-  sel.innerHTML = `<option value="">Seleziona utente…</option>` +
-    UTENTI
-      .slice() // copia
-      .sort((a,b) => a.label.localeCompare(b.label, 'it')) // elenco ordinato per nome esteso
-      .map(u => `<option value="${u.id}">${u.label} (${u.id})</option>`)
-      .join("");
+  const nome = prompt("Inserisci Nome e Cognome:");
+  const norm = normalize(nome);
 
-  document.querySelector("main").prepend(sel);
+  // match diretto nel DB
+  const found = UTENTI_NORM_MAP[norm];
 
-  sel.addEventListener("change", () => {
-    if (!sel.value) return;
-    saveUser(sel.value);  // salvo l'ID
-    location.reload();
-  });
+  if (found) {
+    // trovato 1:1
+    saveUser(found);
+    userFull = found;
+  } else {
+    // no match → mostriamo combo utenti
+    const sel = document.createElement("select");
+    sel.id = "selettoreUtente";
+    sel.style.width = "100%";
+    sel.style.padding = "12px";
+    sel.style.border = "1px solid #ccc";
+    sel.style.borderRadius = "6px";
+    sel.style.marginBottom = "12px";
+    sel.innerHTML = `<option value="">Seleziona utente…</option>` +
+      UTENTI
+        .slice()
+        .sort((a,b) => a.label.localeCompare(b.label,'it'))
+        .map(u => `<option value="${u.id}">${u.label} (${u.id})</option>`)
+        .join("");
+
+    document.querySelector("main").prepend(sel);
+
+    sel.addEventListener("change", () => {
+      if (!sel.value) return;
+      saveUser(sel.value);
+      location.reload();
+    });
+  }
 }
-
 
 // Chiave URL robusta (codifica /, spazi, e TUTTI gli apostrofi)
 function _userKey() {

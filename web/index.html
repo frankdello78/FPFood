@@ -395,8 +395,8 @@ const UTENTI = [
 function normalize(s) {
   return (s || "")
     .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // accenti
-    .replace(/['’`]/g, "")                              // apostrofi
+	.normalize("NFD").replace(/[\u0300-\u036f]/g, "") // accenti
+	.replace(/['’`]/g, "") // apostrofi
     .replace(/\s+/g, "");                               // spazi
 }
 

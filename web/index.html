@@ -367,22 +367,79 @@
 const API = "https://fpfood-backend.onrender.com/api";
 
 // ----------------------
-// UTENTE (solo prima volta)
+// UTENTE fisso da elenco DB
 // ----------------------
-if (!localStorage.getItem("fpfood_user")) {
-    let nome = "";
-    while (!nome.trim()) {
-        nome = prompt("Inserisci Nome e Cognome:");
-    }
-    localStorage.setItem("fpfood_user", nome.trim());
+// Elenco ufficiale utenti dal DB principale (id = chiave, label = nome esteso)
+const UTENTI = [
+  { id: "apanella",   label: "Panella Angela" },
+  { id: "cbarca",     label: "Barca Cristian" },
+  { id: "fdelloste",  label: "Dell'oste Francesco" },
+  { id: "ggiancola",  label: "Giancola Gianfranco" },
+  { id: "gIorio",     label: "Iorio Giovanni" },
+  { id: "gromano",    label: "Romano Giuseppe" },
+  { id: "gtanucci",   label: "Tanucci Giuseppe" },
+  { id: "gzollo",     label: "Zollo Gianluca" },
+  { id: "liannella",  label: "Iannella Luigi" },
+  { id: "mberillo",   label: "Berillo Mario" },
+  { id: "mcapitanio", label: "Capitanio Maik" },
+  { id: "mscimone",   label: "Scimone Maurizio" },
+  { id: "ncapitanio", label: "Capitanio Nazzareno" },
+  { id: "niscaro",    label: "Iscaro Nunzio" },
+  { id: "pborzillo",  label: "Borzillo Pompeo" },
+  { id: "smercurio",  label: "Mercurio Stefano" },
+  { id: "ssarracino", label: "Sarracino Sandro" },
+  { id: "vdangelo",   label: "D'angelo Veronica" }
+];
+
+// helper per lavorare sempre con l’ID
+const __ALL_IDS = UTENTI.map(u => u.id);
+
+// helper per ottenere la label leggibile a partire dall’ID
+function getUserLabelById(id) {
+  const u = UTENTI.find(x => x.id === id);
+  return u ? u.label : id;
 }
 
-const userFull = localStorage.getItem("fpfood_user");
+function loadUser() {
+  const u = localStorage.getItem("fpfood_user");
+  if (u && __ALL_IDS.includes(u)) return u;   // deve essere un ID valido
+  return null;
+}
+function saveUser(u) { localStorage.setItem("fpfood_user", u); }
+
+let userFull = loadUser();
+
+// Se non esiste → mostra combo utente (con NOME ESTESO + ID)
+if (!userFull) {
+  const sel = document.createElement("select");
+  sel.id = "selettoreUtente";
+  sel.style.width = "100%";
+  sel.style.padding = "12px";
+  sel.style.border = "1px solid #ccc";
+  sel.style.borderRadius = "6px";
+  sel.style.marginBottom = "12px";
+  // opzione placeholder
+  sel.innerHTML = `<option value="">Seleziona utente…</option>` +
+    UTENTI
+      .slice() // copia
+      .sort((a,b) => a.label.localeCompare(b.label, 'it')) // elenco ordinato per nome esteso
+      .map(u => `<option value="${u.id}">${u.label} (${u.id})</option>`)
+      .join("");
+
+  document.querySelector("main").prepend(sel);
+
+  sel.addEventListener("change", () => {
+    if (!sel.value) return;
+    saveUser(sel.value);  // salvo l'ID
+    location.reload();
+  });
+}
+
 
 // Chiave URL robusta (codifica /, spazi, e TUTTI gli apostrofi)
 function _userKey() {
   // prima codifico tutto
-  let key = encodeURIComponent(userFull || '');
+  let key = encodeURIComponent(userFull);
   // forzo anche i due tipi di apostrofo se rimasti “nudi” nei path logger/stack
   key = key.replace(/'/g, '%27').replace(/’/g, '%E2%80%99');
   return key;
@@ -397,7 +454,24 @@ function labelUser(full) {
     return nome[0].toUpperCase() + " " + cognome;
 }
 
-document.getElementById("utenteLabel").textContent = "Utente: " + labelUser(userFull);
+// Mostro "Nome Esteso (id)"
+document.getElementById("utenteLabel").textContent =
+  "Utente: " + getUserLabelById(userFull) + " (" + userFull + ")";
+
+// Bottone "Cambia utente"
+const btnReset = document.createElement("button");
+btnReset.textContent = "Cambia utente";
+btnReset.style.marginLeft = "12px";
+btnReset.style.padding = "6px 10px";
+btnReset.style.fontSize = "14px";
+btnReset.style.background = "#444";
+btnReset.style.color = "white";
+btnReset.style.borderRadius = "6px";
+btnReset.onclick = () => {
+  localStorage.removeItem("fpfood_user");
+  location.reload();
+};
+document.getElementById("utenteLabel").after(btnReset);
 
 // === Punto 2: listener filtri ===
 document.getElementById("filtroMese")?.addEventListener("change", () => caricaLista());

@@ -26,8 +26,13 @@ self.addEventListener("fetch", (e) => {
   const isHTML = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
 
   // 🔒 BYPASS API: mai cache sulle chiamate al backend
-  if (url.includes('fpfood-backend.onrender.com')) {
-    e.respondWith(fetch(req)); // network-only, nessun caching
+  // BYPASS API: mai cache sulle chiamate al backend (cloud o locale)
+  if (
+    url.includes('fpfood-backend.onrender.com') ||
+    url.includes('127.0.0.1:8000') ||
+    url.includes('localhost:8000')
+   ) {
+   e.respondWith(fetch(req)); // network-only, nessun caching
     return;
   }
 

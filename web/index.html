@@ -155,130 +155,139 @@
 		  return `${y}-${pad(m)}-${pad(d)}`;
 		}
 
-		function parseQuick(text) {
-		  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+		// === Parser robusto per “Orto dei Longobardi” + fallback ===
+        function parseQuick(text) {
+          const raw = String(text || "");
+          const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 
-		  // fornitore: prima riga non “scontrino”
-		  let merchant = '';
-		  for (const l of lines) {
-			const u = l.toUpperCase();
-			if (u.includes('SCONTRINO')) continue;
-			merchant = l;
-			break;
-		  }
+          // --- Ristorante (preferisci match esplicito Orto) ---
+          let merchant = '';
+          const whole = raw.toUpperCase().replace(/\s+/g, ' ');
+          if (whole.includes('ORTO') && whole.includes('LONGOBARDI')) {
+            merchant = 'Orto dei longobardi';
+          } else {
+            // fallback: prima riga non "SCONTRINO" con almeno 2 lettere
+            for (const l of lines) {
+              const u = l.toUpperCase();
+              if (u.includes('SCONTRINO')) continue;
+              if (/[A-Z]{2,}/.test(u)) { merchant = l; break; }
+            }
+          }
 
-		  // data: supporta "DATA" / "DATA ORA", separatori / - . e spazi
-		  let dateISO = '';
+          // --- Data (preferisci riga con "DATA"/"EMESSO"/"ORA", poi globale) ---
+          let dateISO = '';
+          const pref = lines.filter(l => /DATA|EMESSO|ORA/i.test(l)).concat(lines);
+          for (const l of pref) {
+            let m;
+            // dd/mm/yy(yy)
+            m = l.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+            if (m) { dateISO = toISO(m[1], m[2], m[3]); if (dateISO) break; }
+            // yyyy-mm-dd
+            m = l.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+            if (m) { dateISO = toISO(m[3], m[2], m[1]); if (dateISO) break; }
+          }
 
-		  // "DATA ORA: 22/02/26 19:03" o "DATA: 22.02.2026"
-		  const reDataPref = /DATA(?:\s*ORA)?\s*[:\-]?\s*(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{2,4})/i;
-		  // 22/02/2026 | 22-02-26 | 22.02.26 (anche con spazi)
-		  const reDMY     = /(\b)(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{2,4})(\b)/;
-		  // 2026-02-22 (anche con spazi)
-		  const reYMD     = /(\b)(\d{4})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})(\b)/;
+          // --- Importo (TOTALE COMPLESSIVO preferito) ---
+          const takeAmounts = (s) => (String(s).match(/\d+[.,]\d{2}/g) || [])
+                                       .map(v => v.replace(/\s+/g,'').replace(',','.'));
+          let total = '';
+          const totLines = lines.filter(l => /TOTALE|COMPLESSIV/i.test(l));
+          for (const l of totLines) {
+            const am = takeAmounts(l);
+            if (am.length) total = am[am.length - 1]; // ultimo sulla riga del totale
+          }
+          if (!total) {
+            const all = takeAmounts(raw);
+            if (all.length) {
+              // fallback: prendi il massimo come probabile totale
+              total = all.map(parseFloat).reduce((a,b) => Math.max(a,b), 0).toFixed(2);
+            }
+          }
 
-		  for (const l of lines) {
-			let m = l.match(reDataPref);
-			if (m) { dateISO = toISO(m[1], m[2], m[3]); break; }
+          return { merchant, dateISO, total };
+        }
 
-			m = l.match(reDMY);
-			if (m) { dateISO = toISO(m[2], m[3], m[4]); break; }
+        // Mappatura ristorante (robusta)
+        function mapRistorante(text) {
+          const u = String(text || '').toUpperCase();
+          if (u.includes('ORTO') && u.includes('LONGOBARDI')) return 'Orto dei longobardi';
+          if (u.includes('SACE')) return 'Sace Group';
+          return '';
+        }
 
-			m = l.match(reYMD);
-			if (m) { dateISO = toISO(m[4], m[3], m[2]); break; } // y-m-d -> (d,m,y)
-		  }
+        function sanitizeName(s) {
+          return (s || 'scontrino')
+                  .normalize('NFKD').replace(/[^\w\s-]/g,'')
+                  .trim().replace(/\s+/g,'_').toLowerCase();
+        }
 
-		  // totale: ultimo importo (12,34 | 12.34 | 12, 34)
-		  const amountMatches = [...text.matchAll(/\d+[.,]\s?\d{2}/g)].map(x => x[0].replace(/\s+/g,''));
-		  const total = (amountMatches.length ? amountMatches[amountMatches.length - 1] : '').replace(',', '.');
+        // === Worker Tesseract persistente (caricato 1 volta e riusato) ===
+        let _ocrWorker = null;
+        async function _getWorker(statusCb) {
+          if (_ocrWorker) return _ocrWorker;
+          const logger = (m) => {
+            if (statusCb && m?.status && m?.progress != null) {
+              statusCb(`${m.status} ${Math.round(m.progress*100)}%`);
+            } else {
+              console.log(m?.status || '', m?.progress || '');
+            }
+          };
+          const w = await Tesseract.createWorker('ita+eng', 1, { logger });
+          _ocrWorker = w;
+          return _ocrWorker;
+        }
 
-		  return { merchant, dateISO, total };
-		}
+        // Riduci immagine (canvas) per velocizzare l’OCR
+        async function _preprocessToBlob(file, maxSide=1200, quality=0.7) {
+          const img = await new Promise((res, rej) => {
+            const url = URL.createObjectURL(file);
+            const i = new Image();
+            i.onload = () => res({img:i, url});
+            i.onerror = rej;
+            i.src = url;
+          });
+          const {img:im, url} = img;
+          const scale = Math.min(1, maxSide / Math.max(im.width, im.height));
+          const w = Math.round(im.width * scale);
+          const h = Math.round(im.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(im, 0, 0, w, h);
+          const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+          URL.revokeObjectURL(url);
+          return blob || file;
+        }
 
-		function mapRistorante(text) {
-		  const u = text.toUpperCase();
-		  if (u.includes('SACE')) return 'Sace Group';
-		  if (u.includes('ORTO') || u.includes('LONGOBARDI')) return 'Orto dei longobardi';
-		  return '';
-		}
+        // OCR senza whitelist (serve testo per “ORTO”, “TOTALE COMPLESSIVO”)
+        async function doOCR(file, statusCb) {
+          const worker = await _getWorker(statusCb);
+          const small = await _preprocessToBlob(file, 1200, 0.7);
+          const config = {
+            tessedit_pageseg_mode: 6
+          };
+          const { data } = await worker.recognize(small, { config });
+          return (data && data.text) ? data.text : '';
+        }
 
-		function sanitizeName(s) {
-		  return (s || 'scontrino')
-				 .normalize('NFKD').replace(/[^\w\s-]/g,'')
-				 .trim().replace(/\s+/g,'_').toLowerCase();
-		}
-
-		// === Worker Tesseract persistente (caricato 1 volta e riusato) ===
-		let _ocrWorker = null;
-		async function _getWorker(statusCb) {
-		  if (_ocrWorker) return _ocrWorker;
-		  // logger opzionale
-		  const logger = (m) => {
-			if (statusCb && m?.status && m?.progress != null) {
-			  statusCb(`${m.status} ${Math.round(m.progress*100)}%`);
-			} else {
-			  console.log(m?.status || '', m?.progress || '');
-			}
-		  };
-		  const w = await Tesseract.createWorker('ita+eng', 1, { logger });
-		  _ocrWorker = w;
-		  return _ocrWorker;
-		}
-
-		// Riduci immagine (canvas) per velocizzare l’OCR
-		async function _preprocessToBlob(file, maxSide=1200, quality=0.7) {
-		  const img = await new Promise((res, rej) => {
-			const url = URL.createObjectURL(file);
-			const i = new Image();
-			i.onload = () => res({img:i, url});
-			i.onerror = rej;
-			i.src = url;
-		  });
-		  const {img:im, url} = img;
-		  const scale = Math.min(1, maxSide / Math.max(im.width, im.height));
-		  const w = Math.round(im.width * scale);
-		  const h = Math.round(im.height * scale);
-		  const canvas = document.createElement('canvas');
-		  canvas.width = w; canvas.height = h;
-		  const ctx = canvas.getContext('2d');
-		  ctx.drawImage(im, 0, 0, w, h);
-		  // (volendo si può aggiungere grayscale/contrast, ma già così basta)
-		  const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
-		  URL.revokeObjectURL(url);
-		  return blob || file;
-		}
-
-		async function doOCR(file, statusCb) {
-		  const worker = await _getWorker(statusCb);
-		  const small = await _preprocessToBlob(file, 1200, 0.7);
-		  // Config mirata: whitelist numeri e separatori per data/importi, PSM 6 = uniform blocks of text
-		  const config = {
-			tessedit_char_whitelist: '0123456789/.-:',
-			tessedit_pageseg_mode: 6
-		  };
-		  const { data } = await worker.recognize(small, { config });
-		  return (data && data.text) ? data.text : '';
-		}
-
-		function autoDownload(file, merchant) {
-		  const ts = new Date();
-		  const y  = ts.getFullYear();
-		  const mo = String(ts.getMonth()+1).padStart(2,'0');
-		  const d  = String(ts.getDate()).padStart(2,'0');
-		  const h  = String(ts.getHours()).padStart(2,'0');
-		  const mi = String(ts.getMinutes()).padStart(2,'0');
-		  const s  = String(ts.getSeconds()).padStart(2,'0');
-		  const name = `scan_${sanitizeName(merchant)}_${y}${mo}${d}_${h}${mi}${s}.jpg`;
-
-		  const url = URL.createObjectURL(file);
-		  const a = document.createElement('a');
-		  a.href = url;
-		  a.download = name; // download locale (non su server)
-		  document.body.appendChild(a);
-		  a.click();
-		  a.remove();
-		  URL.revokeObjectURL(url);
-		}
+        function autoDownload(file, merchant) {
+          const ts = new Date();
+          const y = ts.getFullYear();
+          const mo = String(ts.getMonth()+1).padStart(2,'0');
+          const d = String(ts.getDate()).padStart(2,'0');
+          const h = String(ts.getHours()).padStart(2,'0');
+          const mi = String(ts.getMinutes()).padStart(2,'0');
+          const s = String(ts.getSeconds()).padStart(2,'0');
+          const name = `scan_${sanitizeName(merchant)}_${y}${mo}${d}_${h}${mi}${s}.jpg`;
+          const url = URL.createObjectURL(file);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        }
 
 		$scanBtn?.addEventListener('click', () => $scanFile?.click());
 
@@ -356,10 +365,12 @@
 	  </div>
 	</div>
 
+	<div class="totale" id="budgetBox">Budget mensile: —</div>
 	<h3>📋 Pasti salvati</h3>
     <div id="lista"></div>
 
-    <div class="totale" id="totaleBox">Totale: 0 €</div>
+	<div class="totale" id="totaleBox">Totale: 0 €</div>
+	<div class="totale" id="restanteBox">Restante: —</div>
 
 <footer style="text-align:center;font-size:12px;color:#666;padding:16px 8px;margin-top:30px;">
   Copyright © 2006 - 2026 EMMEGISOFT s.r.l<br>
@@ -371,6 +382,7 @@
 <script>
 // const API = "https://fpfood-backend.onrender.com/api";
 const API = "http://127.0.0.1:8000/api";
+const EUR = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
 
 // ----------------------
 // UTENTE (solo prima volta)
@@ -626,6 +638,81 @@ document.getElementById("salvaBtn").onclick = async () => {
 // ----------------------
 let __ultimo_filtrato = [];
 
+// === FPFOOD — Budget mensile per utente ===
+let __budget_map = null; // { 'YYYY-MM': number }
+
+function _monthKeyFromInputValue() {
+  const fm = document.getElementById("filtroMese")?.value || "";
+  if (fm) return fm; // già YYYY-MM
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+}
+
+// Converte label MySQL (es. "Feb_2026" oppure "Febbraio_2026") -> "2026-02"
+// Accetta anche "2026-02" e "02/2026"
+function _parse_mysql_month_label(label) {
+  const s = String(label || '').trim();
+  if (!s) return '';
+  let m = s.match(/^([A-Za-zÀ-ÿ]+)_(\d{4})$/);
+  if (m) {
+    const name = m[1].toLowerCase();
+    const y = m[2];
+    const map = {
+      gen:1, gennaio:1, jan:1,
+      feb:2, febbraio:2,
+      mar:3, marzo:3,
+      apr:4, aprile:4,
+      mag:5, maggio:5, may:5,
+      giu:6, giugno:6,
+      lug:7, luglio:7, jul:7,
+      ago:8, agosto:8,
+      set:9, sep:9, settembre:9,
+      ott:10, oct:10, ottobre:10,
+      nov:11, novembre:11,
+      dic:12, dec:12, dicembre:12
+    };
+    const mm = map[name];
+    if (mm) return `${y}-${String(mm).padStart(2,'0')}`;
+  }
+  m = s.match(/^(\d{4})-(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}`;
+  m = s.match(/^(\d{1,2})\/(\d{4})$/);
+  if (m) return `${m[2]}-${String(m[1]).padStart(2,'0')}`;
+  return '';
+}
+
+// Carica i budget dell’utente una sola volta e li mappa per mese
+async function _ensureBudgetLoadedOnce() {
+  if (__budget_map !== null) return __budget_map;
+  __budget_map = {};
+  try {
+    const url = `${API}/budget/${_userKey()}`;
+    const r = await fetch(url, { cache: "no-store" });
+    const txt = await r.text().catch(() => "");
+    let rows = [];
+    try { rows = txt ? JSON.parse(txt) : []; } catch { rows = []; }
+    for (const row of rows) {
+      const key = _parse_mysql_month_label(row.Mese || row.mese || row.MESE);
+      const val = parseFloat(row.Budget ?? row.budget ?? row.BUDGET);
+      if (key && isFinite(val)) __budget_map[key] = val;
+    }
+    console.log("[BUDGET] map:", __budget_map);
+  } catch (e) {
+    console.error("[BUDGET] load error:", e);
+  }
+  return __budget_map;
+}
+
+function _ensureDefaultMonthFromBudget(){
+  try {
+    const fm = document.getElementById('filtroMese');
+    if (!fm || fm.value) return; // già scelto manualmente
+    const keys = Object.keys(__budget_map || {}).sort(); // YYYY-MM in ordine
+    if (keys.length) {
+      fm.value = keys[keys.length - 1]; // ultimo = più recente
+    }
+  } catch (e) { /* no-op */ }
+}
 async function caricaLista() {
   const listaBox = document.getElementById("lista");
   listaBox.innerHTML = "";
@@ -770,14 +857,29 @@ async function modifica(id, rist, data, importo) {
 // ----------------------
 function aggiornaTotale() {
   const sum = (__ultimo_filtrato || []).reduce((acc, p) => acc + (parseFloat(p.importo) || 0), 0);
-  document.getElementById("totaleBox").textContent = "Totale: " + sum.toFixed(2) + " €";
+  const totBox = document.getElementById("totaleBox");
+  if (totBox) totBox.textContent = "Totale: " + EUR.format(sum);
+
+  // Budget mensile e Restante
+  const monthKey = _monthKeyFromInputValue(); // "YYYY-MM"
+  const budget = (__budget_map && __budget_map[monthKey] != null) ? Number(__budget_map[monthKey]) : null;
+
+  const bBox = document.getElementById("budgetBox");
+  if (bBox) bBox.textContent = "Budget mensile: " + (budget != null ? EUR.format(budget) : "—");
+
+  const rBox = document.getElementById("restanteBox");
+  if (rBox) rBox.textContent = "Restante: " + (budget != null ? EUR.format(budget - sum) : "—");
 }
 
-caricaLista();
+_ensureBudgetLoadedOnce().finally(() => {
+  _ensureDefaultMonthFromBudget(); // <-- setta il mese disponibile (se il filtro è vuoto)
+  caricaLista();
+});
+
 </script>
 
 <script>
-if ("serviceWorker" in navigator) {
+if ("serviceWorker" in navigator && !location.hostname.includes("127.0.0.1") && !location.hostname.includes("localhost")) {
   // bump dell'URL per evitare cache del file SW
   navigator.serviceWorker.register("service-worker.js?v=8").then(reg => {
     reg.update?.();

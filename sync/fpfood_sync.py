@@ -87,12 +87,19 @@ def fetch_all_fpfood(cfg):
 
 def open_mysql(cfg):
     mc = cfg["mysql"]
-    # mysql-connector-python
     conn = mysql.connect(
         host=mc["host"], port=int(mc.get("port",3306)),
         user=mc["user"], password=mc["password"],
         database=mc["database"], charset=mc.get("charset","latin1")
     )
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT DATABASE()")
+        db = cur.fetchone()[0]
+        print(f"[DB] connected to {db}.{cfg['mysql']['table']}")
+        cur.close()
+    except Exception as e:
+        print(f"[DB] info error: {e}")
     return conn
 
 def read_existing_map(conn, cfg):
@@ -144,8 +151,8 @@ def upsert_delete(conn, cfg, fp_rows):
             )
             if need_upd:
                 sql = f"""UPDATE {tbl}
-                          SET Importo=%s, sconto=%s, IdConvenzione=%s, IdMese=%s
-                          WHERE idpastiConsumati=%s"""
+                 SET Importo=%s, sconto=%s, IdConvenzione=%s, IdMese=%s, OrigineFP=1
+                 WHERE idpastiConsumati=%s"""
                 cur.execute(sql, (
                     r["Importo"], r["sconto"], r["IdConvenzione"], r["IdMese"],
                     ex["idpk"]
@@ -153,16 +160,38 @@ def upsert_delete(conn, cfg, fp_rows):
                 upd += 1
         else:
             sql = f"""INSERT INTO {tbl}
-                      (IdUtente, IdMese, IdGiorno, Importo, sconto, IdConvenzione)
-                      VALUES (%s,%s,%s,%s,%s,%s)"""
+             (IdUtente, IdMese, IdGiorno, Importo, sconto, IdConvenzione, OrigineFP)
+             VALUES (%s,%s,%s,%s,%s,%s,%s)"""
             cur.execute(sql, (
-                r["IdUtente"], r["IdMese"], r["IdGiorno"], r["Importo"], r["sconto"], r["IdConvenzione"]
+                r["IdUtente"], r["IdMese"], r["IdGiorno"],
+                r["Importo"], r["sconto"], r["IdConvenzione"],
+                1
             ))
             ins += 1
 
     # DELETE mancanti
     if cfg.get("delete_missing", True):
         for k, ex in existing.items():
+
+            # Controlla SE la riga proviene da FPFOOD
+            sql_chk = f"SELECT OrigineFP FROM {tbl} WHERE idpastiConsumati=%s"
+            cur.execute(sql_chk, (ex["idpk"],))
+            row = cur.fetchone()
+
+            if not row:
+                continue
+
+            origine = row[0]
+
+            # Se OrigineFP è NULL → riga STORICA → NON cancellare MAI
+            if origine is None:
+                continue
+
+            # Se non è 1 → NON è FPFOOD → NON toccare
+            if origine != 1:
+                continue
+
+            # Ora è sicuro: riga FPFOOD che NON esiste più nel backend locale
             if k not in desired:
                 sql = f"DELETE FROM {tbl} WHERE idpastiConsumati=%s"
                 cur.execute(sql, (ex["idpk"],))

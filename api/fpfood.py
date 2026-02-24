@@ -10,6 +10,8 @@ from typing import List
 import sqlite3
 from pathlib import Path
 from datetime import date
+import json
+import mysql.connector as mysql
 
 # ---------------------------------------
 # Config DB (SQLite locale in ./data)
@@ -25,6 +27,7 @@ def _get_conn():
     conn.row_factory = sqlite3.Row
     return conn
 
+# --- SQLite: inizializzazione tabella ---
 def _init_db():
     with _get_conn() as con:
         con.execute(
@@ -40,7 +43,30 @@ def _init_db():
         )
         con.commit()
 
+# inizializza SUBITO dopo la definizione (ordine corretto)
 _init_db()
+
+# --- Config MySQL (riuso della config del sync in ./sync/fpfood_sync.config.json) ---
+SYNC_CFG_PATH = BASE_DIR / "sync" / "fpfood_sync.config.json"
+
+def _load_sync_cfg():
+    with open(SYNC_CFG_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def _open_mysql_from_sync_cfg():
+    # debug opzionale
+    print("[BUDGET] cfg path:", SYNC_CFG_PATH)
+    cfg = _load_sync_cfg()
+    mc = cfg["mysql"]
+    print("[BUDGET] MySQL host:", mc.get("host"), "db:", mc.get("database"))
+    return mysql.connect(
+        host=mc["host"],
+        port=int(mc.get("port", 3306)),
+        user=mc["user"],
+        password=mc["password"],
+        database=mc["database"],
+        charset=mc.get("charset", "latin1"),
+    )
 
 # ---------------------------------------
 # Modelli Pydantic (request/response)
@@ -108,6 +134,44 @@ def crea_pasto(p: PastoCreate):
         new_id = cur.lastrowid
         row = con.execute("SELECT * FROM pasti WHERE id = ?", (new_id,)).fetchone()
         return _row_to_pasto(row)
+
+# === BUDGET: somma per utente/mese da MySQL (tabella richiestemg) ===
+@app.get("/api/budget/{utente}")
+def budget_mensile(utente: str):
+    """
+    Output atteso dalla UI:
+    [
+      { "Mese": "Feb_2026", "Budget": 120.0 },
+      ...
+    ]
+    """
+    try:
+        con = _open_mysql_from_sync_cfg()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Connessione MySQL fallita: {e}")
+    try:
+        cur = con.cursor()
+        sql = (
+            "SELECT IdUtente, SUM(ImportoRichiesta) AS Budget, "
+            "DATE_FORMAT(IdMese, '%b_%Y') AS Mese "
+            "FROM richiestemg r "
+            "WHERE IdUtente = %s "
+            "GROUP BY IdUtente, IdMese "
+            "ORDER BY MIN(IdMese) DESC"
+        )
+        cur.execute(sql, (utente.strip(),))
+        out = []
+        for (IdUtente, Budget, Mese) in cur.fetchall() or []:
+            out.append({"Mese": str(Mese), "Budget": float(Budget or 0.0)})
+        return out
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Query budget fallita: {e}")
+    finally:
+        try:
+            cur.close()
+        except:
+            pass
+        con.close()
 
 @app.get("/api/pasti/{utente}", response_model=List[Pasto])
 def lista_pasti(utente: str):

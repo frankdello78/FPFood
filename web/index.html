@@ -492,11 +492,8 @@ const isAdmin = (userId === "fdelloste");
 
 // Chiave URL robusta (codifica /, spazi, e TUTTI gli apostrofi)
 function _userKey() {
-  // prima codifico tutto
-  let key = encodeURIComponent(userFull || '');
-  // forzo anche i due tipi di apostrofo se rimasti “nudi” nei path logger/stack
-  key = key.replace(/'/g, '%27').replace(/’/g, '%E2%80%99');
-  return key;
+  // chiave = userId sempre
+  return encodeURIComponent(userId || '');
 }
 
 // Etichetta utente: M DAngelo
@@ -583,7 +580,7 @@ document.getElementById("salvaBtn").onclick = async () => {
   }
 
   const payload = {
-    utente: userFull,
+    utente: userId,
     ristorante: r,
     data: d,
     importo: parseFloat(i)
@@ -737,15 +734,11 @@ async function modifica(id, rist, data, importo) {
   if (ni == null) return;
 
   const payload = {
-    utente: userFull,
+    utente: userId,
     ristorante: nr,
     data: nd,
     importo: parseFloat(ni)
   };
-
-  const url = `${API}/pasti/${id}`;
-  console.log("[PUT] URL:", url);
-  console.log("[PUT] Payload:", payload);
 
   let res;
   try {
@@ -785,7 +778,7 @@ caricaLista();
 <script>
 if ("serviceWorker" in navigator) {
   // bump dell'URL per evitare cache del file SW
-  navigator.serviceWorker.register("service-worker.js?v=7").then(reg => {
+  navigator.serviceWorker.register("service-worker.js?v=8").then(reg => {
     reg.update?.();
   });
 

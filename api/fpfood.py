@@ -18,6 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DB_DIR = BASE_DIR / "data"
 DB_DIR.mkdir(exist_ok=True)
 DB_PATH = DB_DIR / "fpfood.db"
+print("[DB] usando:", DB_PATH)
 
 def _get_conn():
     conn = sqlite3.connect(DB_PATH)

@@ -742,6 +742,7 @@ async function modifica(id, rist, data, importo) {
 
   let res;
   try {
+    const url = `${API}/pasti/${id}`;
     res = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

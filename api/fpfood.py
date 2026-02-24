@@ -121,12 +121,14 @@ def lista_pasti(utente: str):
 def modifica_pasto(pasto_id: int, p: PastoCreate):
     _validate_ristorante(p.ristorante)
     with _get_conn() as con:
+        print("[PUT] id=", pasto_id)
         exists = con.execute("SELECT 1 FROM pasti WHERE id = ?", (pasto_id,)).fetchone()
+        print("[PUT] exists=", bool(exists))
         if not exists:
             raise HTTPException(status_code=404, detail="Pasto non trovato")
         con.execute(
-            "UPDATE stessi SET utente=?, ristorante=?, data=?, importo=? WHERE id=?".replace("stessi", "pasti"),
-            (p.utente.strip(), p.ristorante, p.data.isoformat(), float(p.importo), pasto_id),
+         "UPDATE pasti SET utente=?, ristorante=?, data=?, importo=? WHERE id=?",
+         (p.utente.strip(), p.ristorante, p.data.isoformat(), float(p.importo), int(pasto_id)),
         )
         con.commit()
         row = con.execute("SELECT * FROM pasti WHERE id = ?", (pasto_id,)).fetchone()
@@ -135,7 +137,9 @@ def modifica_pasto(pasto_id: int, p: PastoCreate):
 @app.delete("/api/pasti/{pasto_id}")
 def elimina_pasto(pasto_id: int):
     with _get_conn() as con:
+        print("[DEL] id=", pasto_id)
         cur = con.execute("DELETE FROM pasti WHERE id = ?", (pasto_id,))
+        print("[DEL] rowcount=", cur.rowcount)
         con.commit()
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Pasto non trovato")
